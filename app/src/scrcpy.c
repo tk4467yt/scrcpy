@@ -40,6 +40,8 @@
 # include "v4l2_sink.h"
 #endif
 
+#include "ax_action.h"
+
 struct scrcpy {
     struct sc_server server;
     struct sc_screen screen;
@@ -779,6 +781,8 @@ aoa_hid_end:
         timeout_started = true;
     }
 
+    start_ax_action(serial);
+
     ret = event_loop(s);
     LOGD("quit...");
 
@@ -790,6 +794,8 @@ end:
     if (timeout_started) {
         sc_timeout_stop(&s->timeout);
     }
+
+    stop_ax_action();
 
     // The demuxer is not stopped explicitly, because it will stop by itself on
     // end-of-stream
