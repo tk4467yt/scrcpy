@@ -32,7 +32,7 @@ static int handle_received_data(const uv_buf_t* buf, ssize_t nread)
 {
     (void)buf;
     (void)nread;
-    
+
     return SCRCPY_EXIT_SUCCESS;
 }
 
@@ -119,7 +119,6 @@ static int ax_thread_cb(void *data)
     retVal = uv_run(&axUVLoop, UV_RUN_DEFAULT);
     if (retVal) {
         LOGI("uv_run broken");
-        return SCRCPY_EXIT_FAILURE;
     }
 
     uv_loop_close(&axUVLoop);
