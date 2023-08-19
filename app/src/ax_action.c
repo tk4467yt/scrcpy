@@ -28,6 +28,14 @@ static bool ax_running = false;
 
 static uv_async_t stop_async;
 
+static int handle_received_data(const uv_buf_t* buf, ssize_t nread)
+{
+    (void)buf;
+    (void)nread;
+    
+    return SCRCPY_EXIT_SUCCESS;
+}
+
 static void on_require_alloc_buf(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
 {
     (void)handle;
@@ -45,7 +53,13 @@ static void ax_release_uv_buf(const uv_buf_t* buf)
 static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     if (nread > 0) {
-        // TODO
+        int retVal = handle_received_data(buf, nread);
+        if (SCRCPY_EXIT_SUCCESS != retVal) {
+            LOGE("on_readed_data handle failed");
+            uv_close((uv_handle_t*) stream, NULL);
+
+            uv_async_send(&stop_async);
+        }
     } else {
         if (nread < 0) {
             if (nread != UV_EOF) {
@@ -109,6 +123,8 @@ static int ax_thread_cb(void *data)
     }
 
     uv_loop_close(&axUVLoop);
+
+    ax_running = false;
 
     return SCRCPY_EXIT_SUCCESS;
 }
