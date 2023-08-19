@@ -1,5 +1,7 @@
 src = [
     'src/main.c',
+    'src/ax_action.c',
+    'src/cJSON.c',
     'src/adb/adb.c',
     'src/adb/adb_device.c',
     'src/adb/adb_parser.c',
@@ -171,6 +173,8 @@ endif
 if host_machine.system() == 'windows'
     dependencies += cc.find_library('ws2_32')
 endif
+
+dependencies += dependency('libuv')
 
 check_functions = [
     'strdup',
