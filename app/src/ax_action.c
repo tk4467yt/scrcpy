@@ -52,15 +52,18 @@ static uv_async_t stop_async;
 static uv_async_t update_client_info_async;
 
 static char android_serial[AX_SERIAL_MAX_LEN];
-static int last_send_screen_width;
-static int last_send_screen_height;
-static int tmp_screen_width;
-static int tmp_screen_height;
+static int last_send_screen_width = 0;
+static int last_send_screen_height = 0;
+static int tmp_screen_width = 0;
+static int tmp_screen_height = 0;
 
 #define AX_BUF_SIZE 4096
-#define AX_JSON_BUF_SIZE 4096
-static char ax_content_buf[AX_JSON_BUF_SIZE];
-static char ax_cmd_buf[AX_JSON_BUF_SIZE];
+static char ax_content_buf[AX_BUF_SIZE];
+static char ax_cmd_buf[AX_BUF_SIZE];
+
+#define AX_READED_BUF_SIZE 8192
+static char ax_readed_buf[AX_READED_BUF_SIZE];
+static size_t readed_buf_used_size = 0;
 
 // packets utility
 static char * makeAXPacket(char *packet_buf, char *cmd_str)
@@ -85,7 +88,7 @@ static char * makeAXCommand(char *cmd, char *content)
     cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, "1234567890");
     cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_CONTENT, content);
 
-    cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_JSON_BUF_SIZE, false);
+    cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
 
     cJSON_Delete(cmdJson);
 
@@ -99,7 +102,7 @@ static char * makeSetClientInfoJson(char *clientID, int screen_width, int screen
     cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_SCREEN_WIDTH, screen_width);
     cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_SCREEN_HEIGHT, screen_height);
 
-    cJSON_PrintPreallocated(contentJson, ax_content_buf, AX_JSON_BUF_SIZE, false);
+    cJSON_PrintPreallocated(contentJson, ax_content_buf, AX_BUF_SIZE, false);
 
     cJSON_Delete(contentJson);
 
@@ -108,14 +111,86 @@ static char * makeSetClientInfoJson(char *clientID, int screen_width, int screen
     return cmd_str;
 }
 
-
-// libuv utility
-static int handle_received_data(const uv_buf_t* buf, ssize_t nread)
+static int add_to_readed_buf(const uv_buf_t buf)
 {
-    (void)buf;
-    (void)nread;
+    if (readed_buf_used_size + buf.len > AX_READED_BUF_SIZE) {
+        LOGE("AX add_to_readed_buf failed: %d %d", (int)readed_buf_used_size, (int)buf.len);
+        return SCRCPY_EXIT_FAILURE;
+    }
+
+    memcpy(ax_readed_buf+readed_buf_used_size, buf.base, buf.len);
+    readed_buf_used_size += buf.len;
 
     return SCRCPY_EXIT_SUCCESS;
+}
+
+static int remove_readed_buf_head(size_t count)
+{
+    if (0 == count) {
+        return SCRCPY_EXIT_SUCCESS;
+    }
+    if (count > readed_buf_used_size) {
+        LOGE("AX remove_readed_buf_head failed: %d", (int)count);
+
+        return SCRCPY_EXIT_FAILURE;
+    }
+
+    if (count == readed_buf_used_size) {
+        //all data removed, do not touch innerBuffer
+        readed_buf_used_size = 0;
+    } else {
+        readed_buf_used_size -= count;
+
+        memmove(ax_readed_buf, ax_readed_buf+count, readed_buf_used_size);
+    }
+
+    return SCRCPY_EXIT_SUCCESS;
+}
+
+
+// libuv utility
+static void handle_ax_json_cmd(const uv_buf_t buf)
+{
+    cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
+    cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
+    LOGI("%s", ax_cmd_buf);
+}
+
+static int handle_received_data(const uv_buf_t buf)
+{
+    int retVal = add_to_readed_buf(buf);
+
+    if (SCRCPY_EXIT_SUCCESS == retVal) {
+        while (readed_buf_used_size >= AX_PACKET_HEADER_LEN) {
+            uint8_t ub0 = ax_readed_buf[0];
+            uint8_t ub1 = ax_readed_buf[1];
+            uint8_t ub2 = ax_readed_buf[2];
+            uint8_t ub3 = ax_readed_buf[3];
+
+            size_t packet_len = ub0 * 256 + ub1;
+            size_t header_len = ub2;
+            int content_type = ub3;
+
+            if (packet_len < AX_PACKET_HEADER_LEN || 
+                header_len != AX_PACKET_HEADER_LEN || 
+                content_type != AX_STREAM_CONTENT_TYPE_JSON) {
+                retVal = SCRCPY_EXIT_FAILURE;
+                LOGE("AX invalid packet header");
+                break;
+            }
+
+            if (packet_len > readed_buf_used_size) {
+                LOGI("AX no enough packet data");
+                break;
+            } else {
+                handle_ax_json_cmd(uv_buf_init(ax_readed_buf + AX_PACKET_HEADER_LEN, packet_len - AX_PACKET_HEADER_LEN));
+
+                remove_readed_buf_head(packet_len);
+            }
+        }
+    }
+
+    return retVal;
 }
 
 static void on_require_alloc_buf(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
@@ -134,8 +209,10 @@ static void ax_release_uv_buf(const uv_buf_t* buf)
 
 static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
+    LOGD("on_readed_data: %d", (int)nread);
+
     if (nread > 0) {
-        int retVal = handle_received_data(buf, nread);
+        int retVal = handle_received_data(uv_buf_init(buf->base, nread));
         if (SCRCPY_EXIT_SUCCESS != retVal) {
             LOGE("AX on_readed_data handle failed");
             uv_close((uv_handle_t*) stream, NULL);
