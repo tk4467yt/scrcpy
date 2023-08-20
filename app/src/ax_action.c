@@ -216,9 +216,11 @@ int stop_ax_action()
 void update_ax_device_info(int screen_width, int screen_height)
 {
     if (ax_running) {
-        tmp_screen_width = screen_width;
-        tmp_screen_height = screen_height;
+        if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
+            tmp_screen_width = screen_width;
+            tmp_screen_height = screen_height;
 
-        uv_async_send(&update_client_info_async);
+            uv_async_send(&update_client_info_async);
+        }
     }
 }
