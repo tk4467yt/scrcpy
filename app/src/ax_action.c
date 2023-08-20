@@ -196,6 +196,20 @@ static void on_tcp_wrote_data(uv_write_t *req, int status)
     free(req);
 }
 
+static void sendAXCommand(char *cmd_str)
+{
+    uv_write_t *ax_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
+    uv_buf_t writer_buf;
+    on_require_alloc_buf(NULL, 0, &writer_buf);
+
+    makeAXPacket(writer_buf.base, cmd_str);
+    writer_buf.len = strlen(cmd_str) + AX_PACKET_HEADER_LEN;
+
+    ax_writer->data = (void *)writer_buf.base;
+
+    uv_write(ax_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
+}
+
 static void update_client_info_async_cb(uv_async_t* handle)
 {
     (void)handle;
@@ -207,17 +221,8 @@ static void update_client_info_async_cb(uv_async_t* handle)
             last_send_screen_width = tmp_screen_width;
             last_send_screen_height = tmp_screen_height;
 
-            uv_write_t *device_info_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
-            uv_buf_t writer_buf;
-            on_require_alloc_buf(NULL, 0, &writer_buf);
-            device_info_writer->data = (void *)writer_buf.base;
-
             char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
-            char *packet_str = makeAXPacket(writer_buf.base, cmd_str);
-
-            writer_buf.len = strlen(packet_str);
-
-            uv_write(device_info_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
+            sendAXCommand(cmd_str);
         }
     }
 }
