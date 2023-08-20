@@ -22,11 +22,14 @@
 #define AX_SERVER_PORT 10748
 
 static sc_thread ax_thread;
-static char android_serial[AX_SERIAL_MAX_LEN];
+
 static uv_loop_t axUVLoop;
 static bool ax_running = false;
-
 static uv_async_t stop_async;
+
+static char android_serial[AX_SERIAL_MAX_LEN];
+static int last_send_screen_width;
+static int last_send_screen_height;
 
 static int handle_received_data(const uv_buf_t* buf, ssize_t nread)
 {
@@ -67,6 +70,7 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
             }
             
             uv_close((uv_handle_t*) stream, NULL);
+            uv_async_send(&stop_async);
         }
     }
 
@@ -160,4 +164,17 @@ int stop_ax_action()
     }
 
     return SCRCPY_EXIT_SUCCESS;
+}
+
+void update_ax_device_info(int screen_width, int screen_height)
+{
+    if (ax_running) {
+        if (screen_width != last_send_screen_width &&
+            screen_height != last_send_screen_height) {
+                last_send_screen_width = screen_width;
+                last_send_screen_height = screen_height;
+
+                uv_write_t *device_info_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
+            }
+    }
 }
