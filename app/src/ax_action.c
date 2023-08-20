@@ -147,6 +147,7 @@ static int ax_thread_cb(void *data)
 {
     (void)data;
     LOGI("AX thread running");
+    ax_running = true;
 
     uv_loop_init(&axUVLoop);
 
@@ -179,7 +180,7 @@ static int ax_thread_cb(void *data)
     return SCRCPY_EXIT_SUCCESS;
 }
 
-int start_ax_action(const char *serial)
+int ax_start_action(const char *serial)
 {
     LOGI("AX starting action: %s", serial);
     size_t serialLen = strlen(serial);
@@ -194,13 +195,11 @@ int start_ax_action(const char *serial)
         LOGE("AX thread create failed");
         return SCRCPY_EXIT_FAILURE;
     }
-    
-    ax_running = true;
 
     return SCRCPY_EXIT_SUCCESS;
 }
 
-int stop_ax_action()
+int ax_stop_action()
 {
     LOGI("AX stopping action");
 
@@ -213,7 +212,7 @@ int stop_ax_action()
     return SCRCPY_EXIT_SUCCESS;
 }
 
-void update_ax_device_info(int screen_width, int screen_height)
+void ax_update_client_info(int screen_width, int screen_height)
 {
     if (ax_running) {
         if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {

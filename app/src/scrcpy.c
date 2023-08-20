@@ -781,7 +781,7 @@ aoa_hid_end:
         timeout_started = true;
     }
 
-    start_ax_action(serial);
+    ax_start_action(serial);
 
     ret = event_loop(s);
     LOGD("quit...");
@@ -795,7 +795,7 @@ end:
         sc_timeout_stop(&s->timeout);
     }
 
-    stop_ax_action();
+    ax_stop_action();
 
     // The demuxer is not stopped explicitly, because it will stop by itself on
     // end-of-stream
