@@ -41,6 +41,7 @@
 #define AX_SERVER_ADDR "127.0.0.1"
 #define AX_SERVER_PORT 10748
 
+static bool ax_thread_started = false;
 static sc_thread ax_thread;
 
 static uv_loop_t axUVLoop;
@@ -269,6 +270,7 @@ int ax_start_action(const char *serial)
     }
     strcpy(android_serial, serial);
 
+    ax_thread_started = true;
     bool ok = sc_thread_create(&ax_thread, ax_thread_cb, "ax_thread_name", "");
     if (!ok) {
         LOGE("AX thread create failed");
@@ -282,10 +284,12 @@ int ax_stop_action()
 {
     LOGI("AX stopping action");
 
-    uv_async_send(&stop_async);
+    if (ax_thread_started) {
+        uv_async_send(&stop_async);
         
-    sc_thread_join(&ax_thread, NULL);
-
+        sc_thread_join(&ax_thread, NULL);
+    }
+    
     return SCRCPY_EXIT_SUCCESS;
 }
 
