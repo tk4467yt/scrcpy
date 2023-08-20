@@ -97,9 +97,11 @@ static void stop_async_cb(uv_async_t* handle)
 {
     (void)handle;
 
-    LOGI("AX stop async callback called");
+    if (ax_running) {
+        LOGI("AX stop async callback called");
 
-    uv_stop(&axUVLoop);
+        uv_stop(&axUVLoop);
+    }
 }
 
 static void on_tcp_wrote_data(uv_write_t *req, int status) 
@@ -120,26 +122,28 @@ static void on_tcp_wrote_data(uv_write_t *req, int status)
     free(req);
 }
 
-static void update_client_info_cb(uv_async_t* handle)
+static void update_client_info_async_cb(uv_async_t* handle)
 {
     (void)handle;
 
-    if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
-        LOGI("AX update client info: %d --- %d", tmp_screen_width, tmp_screen_height);
+    if (ax_running) {
+        if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
+            LOGI("AX update client info: %d --- %d", tmp_screen_width, tmp_screen_height);
 
-        last_send_screen_width = tmp_screen_width;
-        last_send_screen_height = tmp_screen_height;
+            last_send_screen_width = tmp_screen_width;
+            last_send_screen_height = tmp_screen_height;
 
-        uv_write_t *device_info_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
-        uv_buf_t writer_buf;
-        on_require_alloc_buf(NULL, 0, &writer_buf);
-        device_info_writer->data = (void *)writer_buf.base;
+            uv_write_t *device_info_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
+            uv_buf_t writer_buf;
+            on_require_alloc_buf(NULL, 0, &writer_buf);
+            device_info_writer->data = (void *)writer_buf.base;
 
-        char *writer_data = "hello";
-        strcpy(writer_buf.base, writer_data);
-        writer_buf.len = strlen(writer_data);
+            char *writer_data = "hello";
+            strcpy(writer_buf.base, writer_data);
+            writer_buf.len = strlen(writer_data);
 
-        uv_write(device_info_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
+            uv_write(device_info_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
+        }
     }
 }
 
@@ -147,12 +151,11 @@ static int ax_thread_cb(void *data)
 {
     (void)data;
     LOGI("AX thread running");
-    ax_running = true;
 
     uv_loop_init(&axUVLoop);
 
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
-    uv_async_init(&axUVLoop, &update_client_info_async, update_client_info_cb);
+    uv_async_init(&axUVLoop, &update_client_info_async, update_client_info_async_cb);
 
     
     uv_tcp_init(&axUVLoop, &tcpClientSocket);
@@ -167,6 +170,8 @@ static int ax_thread_cb(void *data)
         LOGI("uv_tcp_connect failed: %s", uv_strerror(retVal));
         return SCRCPY_EXIT_FAILURE;
     }
+
+    ax_running = true;
 
     retVal = uv_run(&axUVLoop, UV_RUN_DEFAULT);
     if (retVal) {
@@ -203,17 +208,16 @@ int ax_stop_action()
 {
     LOGI("AX stopping action");
 
-    if (ax_running) {
-        uv_async_send(&stop_async);
+    uv_async_send(&stop_async);
         
-        sc_thread_join(&ax_thread, NULL);
-    }
+    sc_thread_join(&ax_thread, NULL);
 
     return SCRCPY_EXIT_SUCCESS;
 }
 
 void ax_update_client_info(int screen_width, int screen_height)
 {
+    // TODO: ax_running, tmp_screen_width, tmp_screen_height are multi thread access
     if (ax_running) {
         if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
             tmp_screen_width = screen_width;
