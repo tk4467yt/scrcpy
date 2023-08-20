@@ -1,0 +1,3 @@
+#!/bin/bash
+
+meson setup --buildtype=release -Dprebuilt_server=./scrcpy-server-v2.1.1 ax_build_release
