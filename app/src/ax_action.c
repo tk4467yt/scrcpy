@@ -137,7 +137,7 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
     if (nread > 0) {
         int retVal = handle_received_data(buf, nread);
         if (SCRCPY_EXIT_SUCCESS != retVal) {
-            LOGE("on_readed_data handle failed");
+            LOGE("AX on_readed_data handle failed");
             uv_close((uv_handle_t*) stream, NULL);
 
             uv_async_send(&stop_async);
@@ -145,7 +145,7 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
     } else {
         if (nread < 0) {
             if (nread != UV_EOF) {
-                LOGE("uv_tcp_connect failed: %s", uv_strerror(nread));
+                LOGE("AX uv_tcp_connect failed: %s", uv_strerror(nread));
             }
             
             uv_close((uv_handle_t*) stream, NULL);
@@ -159,7 +159,7 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 static void on_tcp_connected(uv_connect_t* req, int status)
 {
     if (status) {
-        LOGE("uv_tcp_connect failed: %s", uv_strerror(status));
+        LOGE("AX uv_tcp_connect failed: %s", uv_strerror(status));
         return;
     }
     LOGI("AX tcp connected");
@@ -180,10 +180,10 @@ static void stop_async_cb(uv_async_t* handle)
 
 static void on_tcp_wrote_data(uv_write_t *req, int status) 
 {
-    LOGD("onTcpWroteData status: %d", status);
+    LOGD("AX onTcpWroteData status: %d", status);
 
     if (status) {
-        LOGE("onTcpWroteData failed: %s", uv_strerror(status));
+        LOGE("AX onTcpWroteData failed: %s", uv_strerror(status));
     }
 
     // free
@@ -242,15 +242,16 @@ static int ax_thread_cb(void *data)
 
     int retVal = uv_tcp_connect(&tcpConnector, &tcpClientSocket, (const struct sockaddr*)&serverAddr, on_tcp_connected);
     if (retVal) {
-        LOGI("uv_tcp_connect failed: %s", uv_strerror(retVal));
+        LOGI("AX uv_tcp_connect failed: %s", uv_strerror(retVal));
         return SCRCPY_EXIT_FAILURE;
     }
 
+    LOGI("AX uv_run running");
     ax_running = true;
 
     retVal = uv_run(&axUVLoop, UV_RUN_DEFAULT);
     if (retVal) {
-        LOGI("uv_run broken");
+        LOGI("AX uv_run broken");
     }
 
     uv_loop_close(&axUVLoop);
@@ -270,12 +271,12 @@ int ax_start_action(const char *serial)
     }
     strcpy(android_serial, serial);
 
-    ax_thread_started = true;
     bool ok = sc_thread_create(&ax_thread, ax_thread_cb, "ax_thread_name", "");
     if (!ok) {
         LOGE("AX thread create failed");
         return SCRCPY_EXIT_FAILURE;
     }
+    ax_thread_started = true;
 
     return SCRCPY_EXIT_SUCCESS;
 }
@@ -297,10 +298,12 @@ void ax_update_client_info(int screen_width, int screen_height)
 {
     // TODO: tmp_screen_width, tmp_screen_height are multi thread access
     // 应该不会有问题，宽高第一次设置后，应该就不会再改变
-    if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
-        tmp_screen_width = screen_width;
-        tmp_screen_height = screen_height;
+    if (ax_thread_started && screen_width > 0 && screen_height > 0) {
+        if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
+            tmp_screen_width = screen_width;
+            tmp_screen_height = screen_height;
 
-        uv_async_send(&update_client_info_async);
+            uv_async_send(&update_client_info_async);
+        }
     }
 }

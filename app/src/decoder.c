@@ -73,7 +73,7 @@ sc_decoder_push(struct sc_decoder *decoder, const AVPacket *packet) {
             return false;
         }
 
-        ax_update_client_info(decoder->frame->width, decoder->frame->height);
+        ax_update_client_info(decoder->ctx->width, decoder->ctx->height);
     }
 
     return true;
