@@ -26,11 +26,15 @@ static sc_thread ax_thread;
 static uv_loop_t axUVLoop;
 static uv_tcp_t tcpClientSocket;
 static bool ax_running = false;
+
 static uv_async_t stop_async;
+static uv_async_t update_client_info_async;
 
 static char android_serial[AX_SERIAL_MAX_LEN];
 static int last_send_screen_width;
 static int last_send_screen_height;
+static int tmp_screen_width;
+static int tmp_screen_height;
 
 static int handle_received_data(const uv_buf_t* buf, ssize_t nread)
 {
@@ -98,6 +102,47 @@ static void stop_async_cb(uv_async_t* handle)
     uv_stop(&axUVLoop);
 }
 
+static void on_tcp_wrote_data(uv_write_t *req, int status) 
+{
+    LOGD("onTcpWroteData status: %d", status);
+
+    if (status) {
+        LOGE("onTcpWroteData failed: %s", uv_strerror(status));
+    }
+
+    // free
+    uv_buf_t tmpBuf;
+    tmpBuf.base = (char *)req->data;
+    tmpBuf.len = AX_BUF_SIZE;
+
+    ax_release_uv_buf(&tmpBuf);
+
+    free(req);
+}
+
+static void update_client_info_cb(uv_async_t* handle)
+{
+    (void)handle;
+
+    if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
+        LOGI("AX update client info: %d --- %d", tmp_screen_width, tmp_screen_height);
+
+        last_send_screen_width = tmp_screen_width;
+        last_send_screen_height = tmp_screen_height;
+
+        uv_write_t *device_info_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
+        uv_buf_t writer_buf;
+        on_require_alloc_buf(NULL, 0, &writer_buf);
+        device_info_writer->data = (void *)writer_buf.base;
+
+        char *writer_data = "hello";
+        strcpy(writer_buf.base, writer_data);
+        writer_buf.len = strlen(writer_data);
+
+        uv_write(device_info_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
+    }
+}
+
 static int ax_thread_cb(void *data) 
 {
     (void)data;
@@ -106,6 +151,7 @@ static int ax_thread_cb(void *data)
     uv_loop_init(&axUVLoop);
 
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
+    uv_async_init(&axUVLoop, &update_client_info_async, update_client_info_cb);
 
     
     uv_tcp_init(&axUVLoop, &tcpClientSocket);
@@ -167,42 +213,12 @@ int stop_ax_action()
     return SCRCPY_EXIT_SUCCESS;
 }
 
-static void on_tcp_wrote_data(uv_write_t *req, int status) 
-{
-    LOGD("onTcpWroteData status: %d", status);
-
-    if (status) {
-        LOGE("onTcpWroteData failed: %s", uv_strerror(status));
-    }
-
-    // free
-    uv_buf_t tmpBuf;
-    tmpBuf.base = (char *)req->data;
-    tmpBuf.len = AX_BUF_SIZE;
-
-    ax_release_uv_buf(&tmpBuf);
-
-    free(req);
-}
-
 void update_ax_device_info(int screen_width, int screen_height)
 {
     if (ax_running) {
-        if (screen_width != last_send_screen_width || screen_height != last_send_screen_height) {
-            // TODO, call async
-            last_send_screen_width = screen_width;
-            last_send_screen_height = screen_height;
+        tmp_screen_width = screen_width;
+        tmp_screen_height = screen_height;
 
-            uv_write_t *device_info_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
-            uv_buf_t writer_buf;
-            on_require_alloc_buf(NULL, 0, &writer_buf);
-            device_info_writer->data = (void *)writer_buf.base;
-
-            char *writer_data = "hello";
-            strcpy(writer_buf.base, writer_data);
-            writer_buf.len = strlen(writer_data);
-
-            uv_write(device_info_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
-        }
+        uv_async_send(&update_client_info_async);
     }
 }
