@@ -15,8 +15,28 @@
 #include "ax_action.h"
 #include "cJSON.h"
 
+// packets define
+#define AX_JSON_COMMAND_SET_CLIENT_INFO "set_client_info" // set client info (client ==>> server)
+
+#define AX_JSON_CONTENT_KEY_COMMAND "command"
+#define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
+#define AX_JSON_CONTENT_KEY_CONTENT "content"
+#define AX_JSON_CONTENT_KEY_ERR_CODE "err_code"
+
+#define AX_ERR_CODE_SUCCESS 0
+#define AX_ERR_CODE_FAILED 1
+
+#define AX_JSON_KEY_CLIENT_ID "client_id"
+#define AX_JSON_KEY_SCREEN_WIDTH "screen_width"
+#define AX_JSON_KEY_SCREEN_HEIGHT "screen_height"
+
+#define AX_PACKET_HEADER_LEN 4
+
+#define AX_STREAM_CONTENT_TYPE_RAW_VIDEO 1
+#define AX_STREAM_CONTENT_TYPE_JSON 2
+
+// libuv relate
 #define AX_SERIAL_MAX_LEN 128
-#define AX_BUF_SIZE 2048
 
 #define AX_SERVER_ADDR "127.0.0.1"
 #define AX_SERVER_PORT 10748
@@ -36,6 +56,59 @@ static int last_send_screen_height;
 static int tmp_screen_width;
 static int tmp_screen_height;
 
+#define AX_BUF_SIZE 4096
+#define AX_JSON_BUF_SIZE 4096
+static char ax_content_buf[AX_JSON_BUF_SIZE];
+static char ax_cmd_buf[AX_JSON_BUF_SIZE];
+
+// packets utility
+static char * makeAXPacket(char *packet_buf, char *cmd_str)
+{
+    size_t cmd_len = strlen(cmd_str);
+    size_t packet_len = cmd_len + AX_PACKET_HEADER_LEN;
+
+    packet_buf[0] = (packet_len >> 8) & 0xff;
+    packet_buf[1] = packet_len & 0xff;
+    packet_buf[2] = AX_PACKET_HEADER_LEN;
+    packet_buf[3] = AX_STREAM_CONTENT_TYPE_JSON;
+
+    memcpy(packet_buf + AX_PACKET_HEADER_LEN, cmd_str, cmd_len);
+
+    return packet_buf;
+}
+
+static char * makeAXCommand(char *cmd, char *content)
+{
+    cJSON *cmdJson = cJSON_CreateObject();
+    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_COMMAND, cmd);
+    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, "1234567890");
+    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_CONTENT, content);
+
+    cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_JSON_BUF_SIZE, false);
+
+    cJSON_Delete(cmdJson);
+
+    return ax_cmd_buf;
+}
+
+static char * makeSetClientInfoJson(char *clientID, int screen_width, int screen_height)
+{
+    cJSON *contentJson = cJSON_CreateObject();
+    cJSON_AddStringToObject(contentJson, AX_JSON_KEY_CLIENT_ID, clientID);
+    cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_SCREEN_WIDTH, screen_width);
+    cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_SCREEN_HEIGHT, screen_height);
+
+    cJSON_PrintPreallocated(contentJson, ax_content_buf, AX_JSON_BUF_SIZE, false);
+
+    cJSON_Delete(contentJson);
+
+    char *cmd_str = makeAXCommand(AX_JSON_COMMAND_SET_CLIENT_INFO, ax_content_buf);
+
+    return cmd_str;
+}
+
+
+// libuv utility
 static int handle_received_data(const uv_buf_t* buf, ssize_t nread)
 {
     (void)buf;
@@ -138,9 +211,10 @@ static void update_client_info_async_cb(uv_async_t* handle)
             on_require_alloc_buf(NULL, 0, &writer_buf);
             device_info_writer->data = (void *)writer_buf.base;
 
-            char *writer_data = "hello";
-            strcpy(writer_buf.base, writer_data);
-            writer_buf.len = strlen(writer_data);
+            char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
+            char *packet_str = makeAXPacket(writer_buf.base, cmd_str);
+
+            writer_buf.len = strlen(packet_str);
 
             uv_write(device_info_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
         }
