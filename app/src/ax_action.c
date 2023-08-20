@@ -217,13 +217,12 @@ int ax_stop_action()
 
 void ax_update_client_info(int screen_width, int screen_height)
 {
-    // TODO: ax_running, tmp_screen_width, tmp_screen_height are multi thread access
-    if (ax_running) {
-        if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
-            tmp_screen_width = screen_width;
-            tmp_screen_height = screen_height;
+    // TODO: tmp_screen_width, tmp_screen_height are multi thread access
+    // 应该不会有问题，宽高第一次设置后，应该就不会再改变
+    if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
+        tmp_screen_width = screen_width;
+        tmp_screen_height = screen_height;
 
-            uv_async_send(&update_client_info_async);
-        }
+        uv_async_send(&update_client_info_async);
     }
 }
