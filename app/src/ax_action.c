@@ -153,7 +153,22 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
 {
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
-    LOGI("%s", ax_cmd_buf);
+
+    LOGD("%s", ax_cmd_buf);
+
+    char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
+    int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_ERR_CODE));
+
+    if (AX_ERR_CODE_SUCCESS == innerErrCode) {
+        LOGD("%s success", innerCmd);
+        if (strcmp(innerCmd, AX_JSON_COMMAND_SET_CLIENT_INFO) == 0) {
+            
+        }
+    } else {
+        LOGE("AX cmd: %s failed", innerCmd);
+    }
+    
+    cJSON_Delete(cmdJson);
 }
 
 static int handle_received_data(const uv_buf_t buf)

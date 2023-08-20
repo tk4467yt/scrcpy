@@ -734,6 +734,8 @@ aoa_hid_end:
     // Now that the header values have been consumed, the socket(s) will
     // receive the stream(s). Start the demuxer(s).
 
+    ax_start_action(serial);
+    
     if (options->video) {
         if (!sc_demuxer_start(&s->video_demuxer)) {
             goto end;
@@ -780,8 +782,6 @@ aoa_hid_end:
 
         timeout_started = true;
     }
-
-    ax_start_action(serial);
 
     ret = event_loop(s);
     LOGD("quit...");
