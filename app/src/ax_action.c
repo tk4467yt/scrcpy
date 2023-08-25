@@ -308,12 +308,12 @@ static void update_client_info_async_cb(uv_async_t* handle)
 
     if (ax_running) {
         if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
-            LOGI("AX update client info: %d --- %d", tmp_screen_width, tmp_screen_height);
-
             last_send_screen_width = tmp_screen_width;
             last_send_screen_height = tmp_screen_height;
 
             char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
+            LOGI("AX send command: %s", cmd_str);
+
             sendAXCommand(cmd_str);
         }
     }
