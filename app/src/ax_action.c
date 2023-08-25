@@ -382,7 +382,7 @@ int ax_stop_action()
 {
     LOGI("AX stopping action");
 
-    if (ax_thread_started) {
+    if (ax_thread_started && ax_running) {
         uv_async_send(&stop_async);
         
         sc_thread_join(&ax_thread, NULL);
@@ -395,7 +395,7 @@ void ax_update_client_info(int screen_width, int screen_height)
 {
     // TODO: tmp_screen_width, tmp_screen_height are multi thread access
     // 应该不会有问题，宽高第一次设置后，应该就不会再改变
-    if (ax_thread_started && screen_width > 0 && screen_height > 0) {
+    if (ax_thread_started && ax_running && screen_width > 0 && screen_height > 0) {
         if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
             tmp_screen_width = screen_width;
             tmp_screen_height = screen_height;
