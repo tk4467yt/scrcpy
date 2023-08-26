@@ -734,7 +734,7 @@ aoa_hid_end:
     // Now that the header values have been consumed, the socket(s) will
     // receive the stream(s). Start the demuxer(s).
 
-    ax_start_action(serial);
+    ax_start_action(serial, &s->screen.im);
     
     if (options->video) {
         if (!sc_demuxer_start(&s->video_demuxer)) {

@@ -55,6 +55,7 @@ static uv_async_t stop_async;
 static uv_async_t update_client_info_async;
 
 static char android_serial[AX_SERIAL_MAX_LEN];
+static struct sc_input_manager *ax_sc_im = NULL;
 static int last_send_screen_width = 0;
 static int last_send_screen_height = 0;
 static int tmp_screen_width = 0;
@@ -470,7 +471,7 @@ static int ax_thread_cb(void *data)
     return SCRCPY_EXIT_SUCCESS;
 }
 
-int ax_start_action(const char *serial)
+int ax_start_action(const char *serial, struct sc_input_manager *sc_im)
 {
     LOGI("AX starting action: %s", serial);
     size_t serialLen = strlen(serial);
@@ -479,6 +480,8 @@ int ax_start_action(const char *serial)
         return SCRCPY_EXIT_FAILURE;
     }
     strcpy(android_serial, serial);
+
+    ax_sc_im = sc_im;
 
     bool ok = sc_thread_create(&ax_thread, ax_thread_cb, "ax_thread_name", "");
     if (!ok) {
