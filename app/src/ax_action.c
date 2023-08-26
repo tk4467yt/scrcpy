@@ -19,12 +19,17 @@
 
 // packets define
 #define AX_JSON_COMMAND_SET_CLIENT_INFO "set_client_info" // set client info (client ==>> server)
-#define AX_JSON_COMMAND_SCROLL_UP "scroll_up" // handle packet failed (server ==>> client)
+#define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
 
 #define AX_JSON_CONTENT_KEY_COMMAND "command"
 #define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
 #define AX_JSON_CONTENT_KEY_CONTENT "content"
 #define AX_JSON_CONTENT_KEY_ERR_CODE "err_code"
+
+#define AX_SCROLL_DIRECTION_UP "up"
+#define AX_SCROLL_DIRECTION_DOWN "DOWN"
+#define AX_SCROLL_DIRECTION_LEFT "LEFT"
+#define AX_SCROLL_DIRECTION_RIGHT "RIGHT"
 
 #define AX_ERR_CODE_SUCCESS 0
 #define AX_ERR_CODE_FAILED 1
@@ -192,6 +197,114 @@ static int make_ax_jitter(int limit)
 
     return retJitter;
 }
+static void auto_scroll_handle_4_up()
+{
+    LOGD("auto scroll up");
+
+    int jitter_limit_small = 100;
+    int jitter_limit_large = 300;
+
+    int start_x = last_send_screen_width / 2 + make_ax_jitter(jitter_limit_large);
+    int start_y = last_send_screen_height * 3 / 4  + make_ax_jitter(jitter_limit_small);
+
+    int end_x = start_x + make_ax_jitter(jitter_limit_small);
+    int end_y = start_y - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_small);
+
+    // start touch
+    struct ax_touch_action beginTouch;
+    beginTouch.touch_type = ax_touch_type_down;
+    beginTouch.touch_x = start_x;
+    beginTouch.touch_y = start_y;
+    beginTouch.expire_count = 0;
+
+    add_ax_touch_action(beginTouch);
+
+    // moving
+    int jitter_step = 2;
+    int steps = 10 + make_ax_jitter(jitter_step);
+    int step_x = (end_x - start_x) / steps;
+    int step_y = (end_y - start_y) / steps;
+    int expire_count = 0;
+            
+    int moving_x = start_x;
+    int moving_y = start_y;
+    while (moving_y > end_y) {
+        struct ax_touch_action moveTouch;
+        moveTouch.touch_type = ax_touch_type_move;
+        moveTouch.touch_x = moving_x;
+        moveTouch.touch_y = moving_y;
+        moveTouch.expire_count = expire_count;
+
+        add_ax_touch_action(moveTouch);
+
+        moving_x += step_x;
+        moving_y += step_y;
+    }
+
+    // end touch
+    struct ax_touch_action endTouch;
+    endTouch.touch_type = ax_touch_type_up;
+    endTouch.touch_x = end_x;
+    endTouch.touch_y = end_y;
+    endTouch.expire_count = 0;
+
+    add_ax_touch_action(endTouch);
+}
+
+void auto_scroll_handle_4_left()
+{
+    LOGD("auto scroll left");
+
+    int jitter_limit_small = 100;
+    int jitter_limit_large = 500;
+
+    int start_x = last_send_screen_width * 3 / 4 + make_ax_jitter(jitter_limit_small);
+    int start_y = last_send_screen_height / 2  + make_ax_jitter(jitter_limit_large);
+
+    int end_x = start_x - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_small);
+    int end_y = start_y + make_ax_jitter(jitter_limit_small);
+
+    // start touch
+    struct ax_touch_action beginTouch;
+    beginTouch.touch_type = ax_touch_type_down;
+    beginTouch.touch_x = start_x;
+    beginTouch.touch_y = start_y;
+    beginTouch.expire_count = 0;
+
+    add_ax_touch_action(beginTouch);
+
+    // moving
+    int jitter_step = 2;
+    int steps = 10 + make_ax_jitter(jitter_step);
+    int step_x = (end_x - start_x) / steps;
+    int step_y = (end_y - start_y) / steps;
+    int expire_count = 0;
+            
+    int moving_x = start_x;
+    int moving_y = start_y;
+    while (moving_x > end_x) {
+        struct ax_touch_action moveTouch;
+        moveTouch.touch_type = ax_touch_type_move;
+        moveTouch.touch_x = moving_x;
+        moveTouch.touch_y = moving_y;
+        moveTouch.expire_count = expire_count;
+
+        add_ax_touch_action(moveTouch);
+
+        moving_x += step_x;
+        moving_y += step_y;
+    }
+
+    // end touch
+    struct ax_touch_action endTouch;
+    endTouch.touch_type = ax_touch_type_up;
+    endTouch.touch_x = end_x;
+    endTouch.touch_y = end_y;
+    endTouch.expire_count = 0;
+
+    add_ax_touch_action(endTouch);
+}
+
 static void handle_ax_json_cmd(const uv_buf_t buf)
 {
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
@@ -206,55 +319,16 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         LOGD("%s success", innerCmd);
         if (strcmp(innerCmd, AX_JSON_COMMAND_SET_CLIENT_INFO) == 0) {
             
-        } else if (strcmp(innerCmd, AX_JSON_COMMAND_SCROLL_UP) == 0) {
+        } else if (strcmp(innerCmd, AX_JSON_COMMAND_AUTO_SCROLL) == 0) {
             // origin at left-top
-            int jitter_limit_x = 300;
-            int jitter_limit_y = 100;
 
-            int start_x = last_send_screen_width / 2 + make_ax_jitter(jitter_limit_x);
-            int start_y = last_send_screen_height * 3 / 4  + make_ax_jitter(jitter_limit_y);
+            char *innerContent = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_CONTENT));
 
-            int end_x = start_x + make_ax_jitter(jitter_limit_x);
-            int end_y = start_y - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_y);
-
-            // start touch
-            struct ax_touch_action beginTouch;
-            beginTouch.touch_type = ax_touch_type_down;
-            beginTouch.touch_x = start_x;
-            beginTouch.touch_y = start_y;
-            beginTouch.expire_count = 0;
-
-            add_ax_touch_action(beginTouch);
-
-            // moving
-            int steps =10;
-            int step_x = (end_x - start_x) / steps;
-            int step_y = (end_y - start_y) / steps;
-            int expire_count = 0;
-            
-            int moving_x = start_x;
-            int moving_y = start_y;
-            while (moving_y > end_y) {
-                struct ax_touch_action moveTouch;
-                moveTouch.touch_type = ax_touch_type_move;
-                moveTouch.touch_x = moving_x;
-                moveTouch.touch_y = moving_y;
-                moveTouch.expire_count = expire_count;
-
-                add_ax_touch_action(moveTouch);
-
-                moving_x += step_x;
-                moving_y += step_y;
+            if (strcmp(innerContent, AX_SCROLL_DIRECTION_UP) == 0) {
+                auto_scroll_handle_4_up();
+            } else if (strcmp(innerContent, AX_SCROLL_DIRECTION_LEFT) == 0) {
+                auto_scroll_handle_4_left();
             }
-
-            // end touch
-            struct ax_touch_action endTouch;
-            endTouch.touch_type = ax_touch_type_up;
-            endTouch.touch_x = end_x;
-            endTouch.touch_y = end_y;
-            endTouch.expire_count = 0;
-
-            add_ax_touch_action(endTouch);
         }
     } else {
         LOGE("AX cmd: %s failed", innerCmd);
