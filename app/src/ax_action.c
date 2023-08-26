@@ -1,7 +1,7 @@
 //
 //
 //
-
+#include <stdlib.h>
 
 #include "scrcpy.h"
 #include "util/log.h"
@@ -42,7 +42,7 @@
 #define AX_SERVER_ADDR "127.0.0.1"
 #define AX_SERVER_PORT 10748
 
-#define AX_REPEAT_TIMER_REPEAT_VAL 20
+#define AX_REPEAT_TIMER_REPEAT_VAL 20 // ms
 
 static bool ax_thread_started = false;
 static sc_thread ax_thread;
@@ -68,6 +68,28 @@ static char ax_cmd_buf[AX_BUF_SIZE];
 static char ax_readed_buf[AX_READED_BUF_SIZE];
 static size_t readed_buf_used_size = 0;
 
+#define ax_touch_type_down 0
+#define ax_touch_type_up 1
+#define ax_touch_type_move 2
+struct ax_touch_action
+{
+    int touch_type; // like ax_touch_type_down
+
+    int touch_x;
+    int touch_y;
+
+    int expire_count; // if > 0, valid
+};
+struct ax_touch_queue SC_VECDEQUE(struct ax_touch_action);
+struct ax_touch_queue ax_pending_touch_queue;
+struct ax_touch_action handling_touch_action = {0, 0, 0, -1};
+
+// touch utility
+static void add_ax_touch_action(struct ax_touch_action touchAction)
+{
+    sc_vecdeque_push(&ax_pending_touch_queue, touchAction);
+}
+
 // packets utility
 static char * makeAXPacket(char *packet_buf, char *cmd_str)
 {
@@ -88,7 +110,7 @@ static char * makeAXCommand(char *cmd, char *content)
 {
     cJSON *cmdJson = cJSON_CreateObject();
     cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_COMMAND, cmd);
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, "1234567890");
+    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, "");
     cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_CONTENT, content);
 
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
@@ -157,7 +179,7 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
 
-    LOGD("%s", ax_cmd_buf);
+    LOGD("ax cmd: %s", ax_cmd_buf);
 
     char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
     int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_ERR_CODE));
@@ -167,13 +189,90 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         if (strcmp(innerCmd, AX_JSON_COMMAND_SET_CLIENT_INFO) == 0) {
             
         } else if (strcmp(innerCmd, AX_JSON_COMMAND_SCROLL_UP) == 0) {
-            
+            // origin at left-top
+            int pos_y_jitter = rand() % 100;
+            int pos_x_jitter = rand() % 50;
+            int direction_jitter = rand() % 2;
+
+            int start_x = last_send_screen_width / 2 + (direction_jitter ? pos_x_jitter : (0 - pos_x_jitter));
+            int start_y = last_send_screen_height * 2 / 3 + (direction_jitter ? pos_y_jitter : (0 - pos_y_jitter));
+
+            int end_x = last_send_screen_width / 2 + (direction_jitter ? (0 - pos_x_jitter) : pos_x_jitter);
+            int end_y = last_send_screen_height / 3 + (direction_jitter ? (0 - pos_y_jitter) : pos_y_jitter);
+
+            // start touch
+            struct ax_touch_action beginTouch;
+            beginTouch.touch_type = ax_touch_type_down;
+            beginTouch.touch_x = start_x;
+            beginTouch.touch_y = start_y;
+            beginTouch.expire_count = 0;
+
+            add_ax_touch_action(beginTouch);
+
+            // moving
+            int moving_x = start_x;
+            int moving_y = start_y;
+            int move_max_step = (500 + (rand() % 100)) / AX_REPEAT_TIMER_REPEAT_VAL;
+            int steps = MIN(10, move_max_step);
+
+            if (steps > 0) {
+                int step_x = (end_x - start_x) / steps;
+                int step_y = (end_y - start_y) / steps;
+                int expire_count = move_max_step / steps;
+                
+                while (moving_y > end_y) {
+                    struct ax_touch_action moveTouch;
+                    moveTouch.touch_type = ax_touch_type_move;
+                    moveTouch.touch_x = moving_x;
+                    moveTouch.touch_y = moving_y;
+                    moveTouch.expire_count = expire_count;
+
+                    add_ax_touch_action(moveTouch);
+
+                    moving_x += step_x;
+                    moving_y += step_y;
+                }
+            }
+
+            // end touch
+            struct ax_touch_action endTouch;
+            endTouch.touch_type = ax_touch_type_up;
+            endTouch.touch_x = end_x;
+            endTouch.touch_y = end_y;
+            endTouch.expire_count = 0;
+
+            add_ax_touch_action(endTouch);
         }
     } else {
         LOGE("AX cmd: %s failed", innerCmd);
     }
     
     cJSON_Delete(cmdJson);
+}
+
+static void onAXRepeatTimerExpired(uv_timer_t *handle)
+{
+    (void)handle;
+
+    if (handling_touch_action.expire_count < 0) {
+        // handling touch_action invalid
+        if (sc_vecdeque_is_empty(&ax_pending_touch_queue)) {
+            // queue empty, nothing todo
+        } else {
+            handling_touch_action = sc_vecdeque_pop(&ax_pending_touch_queue);
+        }
+    }
+    
+    if (handling_touch_action.expire_count >= 0) {
+        handling_touch_action.expire_count -= 1;
+
+        if (handling_touch_action.expire_count < 0) {
+            LOGD("consumed touch_action: %d --- %d --- %d", 
+                handling_touch_action.touch_type, 
+                handling_touch_action.touch_x, 
+                handling_touch_action.touch_y);
+        }
+    }
 }
 
 static int handle_received_data(const uv_buf_t buf)
@@ -257,6 +356,7 @@ static void on_tcp_connected(uv_connect_t* req, int status)
 {
     if (status) {
         LOGE("AX uv_tcp_connect failed: %s", uv_strerror(status));
+        ax_running = false;
         return;
     }
     LOGI("AX tcp connected");
@@ -324,16 +424,12 @@ static void update_client_info_async_cb(uv_async_t* handle)
     }
 }
 
-static void onAXRepeatTimerExpired(uv_timer_t *handle)
-{
-    (void)handle;
-
-}
-
 static int ax_thread_cb(void *data) 
 {
     (void)data;
     LOGI("AX thread running");
+
+    sc_vecdeque_init(&ax_pending_touch_queue);
 
     uv_loop_init(&axUVLoop);
 
@@ -369,6 +465,7 @@ static int ax_thread_cb(void *data)
     uv_loop_close(&axUVLoop);
 
     ax_running = false;
+    sc_vecdeque_destroy(&ax_pending_touch_queue);
 
     return SCRCPY_EXIT_SUCCESS;
 }
