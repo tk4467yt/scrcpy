@@ -177,6 +177,21 @@ static int remove_readed_buf_head(size_t count)
 
 
 // libuv utility
+static int make_ax_jitter(int limit)
+{
+    int retJitter = 0;
+
+    int jitter_val = rand() % limit;
+    int jitter_direction = rand() % 2;
+
+    if (jitter_direction > 0) {
+        retJitter = jitter_val;
+    } else {
+        retJitter = 0 - jitter_val;
+    }
+
+    return retJitter;
+}
 static void handle_ax_json_cmd(const uv_buf_t buf)
 {
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
@@ -193,15 +208,14 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
             
         } else if (strcmp(innerCmd, AX_JSON_COMMAND_SCROLL_UP) == 0) {
             // origin at left-top
-            // int pos_y_jitter = rand() % 50;
-            // int pos_x_jitter = rand() % 30;
-            // int direction_jitter = rand() % 2;
+            int jitter_limit_x = 300;
+            int jitter_limit_y = 100;
 
-            int start_x = last_send_screen_width / 2;
-            int start_y = last_send_screen_height * 3 / 4;
+            int start_x = last_send_screen_width / 2 + make_ax_jitter(jitter_limit_x);
+            int start_y = last_send_screen_height * 3 / 4  + make_ax_jitter(jitter_limit_y);
 
-            int end_x = start_x;
-            int end_y = last_send_screen_height / 2;
+            int end_x = start_x + make_ax_jitter(jitter_limit_x);
+            int end_y = start_y - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_y);
 
             // start touch
             struct ax_touch_action beginTouch;
