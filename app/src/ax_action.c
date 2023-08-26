@@ -17,6 +17,7 @@
 
 // packets define
 #define AX_JSON_COMMAND_SET_CLIENT_INFO "set_client_info" // set client info (client ==>> server)
+#define AX_JSON_COMMAND_SCROLL_UP "scroll_up" // handle packet failed (server ==>> client)
 
 #define AX_JSON_CONTENT_KEY_COMMAND "command"
 #define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
@@ -40,6 +41,8 @@
 
 #define AX_SERVER_ADDR "127.0.0.1"
 #define AX_SERVER_PORT 10748
+
+#define AX_REPEAT_TIMER_REPEAT_VAL 20
 
 static bool ax_thread_started = false;
 static sc_thread ax_thread;
@@ -163,6 +166,8 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         LOGD("%s success", innerCmd);
         if (strcmp(innerCmd, AX_JSON_COMMAND_SET_CLIENT_INFO) == 0) {
             
+        } else if (strcmp(innerCmd, AX_JSON_COMMAND_SCROLL_UP) == 0) {
+            
         }
     } else {
         LOGE("AX cmd: %s failed", innerCmd);
@@ -200,7 +205,7 @@ static int handle_received_data(const uv_buf_t buf)
             } else {
                 handle_ax_json_cmd(uv_buf_init(ax_readed_buf + AX_PACKET_HEADER_LEN, packet_len - AX_PACKET_HEADER_LEN));
 
-                remove_readed_buf_head(packet_len);
+                retVal = remove_readed_buf_head(packet_len);
             }
         }
     }
@@ -319,6 +324,12 @@ static void update_client_info_async_cb(uv_async_t* handle)
     }
 }
 
+static void onAXRepeatTimerExpired(uv_timer_t *handle)
+{
+    (void)handle;
+
+}
+
 static int ax_thread_cb(void *data) 
 {
     (void)data;
@@ -328,6 +339,10 @@ static int ax_thread_cb(void *data)
 
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
     uv_async_init(&axUVLoop, &update_client_info_async, update_client_info_async_cb);
+
+    uv_timer_t repeatTimer;
+    uv_timer_init(&axUVLoop, &repeatTimer);
+    uv_timer_start(&repeatTimer, onAXRepeatTimerExpired, 1000, AX_REPEAT_TIMER_REPEAT_VAL);
 
     
     uv_tcp_init(&axUVLoop, &tcpClientSocket);
