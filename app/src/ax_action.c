@@ -193,15 +193,15 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
             
         } else if (strcmp(innerCmd, AX_JSON_COMMAND_SCROLL_UP) == 0) {
             // origin at left-top
-            int pos_y_jitter = rand() % 100;
-            int pos_x_jitter = rand() % 50;
-            int direction_jitter = rand() % 2;
+            // int pos_y_jitter = rand() % 50;
+            // int pos_x_jitter = rand() % 30;
+            // int direction_jitter = rand() % 2;
 
-            int start_x = last_send_screen_width / 2 + (direction_jitter ? pos_x_jitter : (0 - pos_x_jitter));
-            int start_y = last_send_screen_height * 3 / 4 + (direction_jitter ? pos_y_jitter : (0 - pos_y_jitter));
+            int start_x = last_send_screen_width / 2;
+            int start_y = last_send_screen_height * 3 / 4;
 
-            int end_x = last_send_screen_width / 2 + (direction_jitter ? (0 - pos_x_jitter) : pos_x_jitter);
-            int end_y = last_send_screen_height / 4 + (direction_jitter ? (0 - pos_y_jitter) : pos_y_jitter);
+            int end_x = start_x;
+            int end_y = last_send_screen_height / 2;
 
             // start touch
             struct ax_touch_action beginTouch;
@@ -213,28 +213,24 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
             add_ax_touch_action(beginTouch);
 
             // moving
+            int steps =10;
+            int step_x = (end_x - start_x) / steps;
+            int step_y = (end_y - start_y) / steps;
+            int expire_count = 0;
+            
             int moving_x = start_x;
             int moving_y = start_y;
-            int move_max_step = (500 + (rand() % 100)) / AX_REPEAT_TIMER_REPEAT_VAL;
-            int steps = MIN(10, move_max_step);
+            while (moving_y > end_y) {
+                struct ax_touch_action moveTouch;
+                moveTouch.touch_type = ax_touch_type_move;
+                moveTouch.touch_x = moving_x;
+                moveTouch.touch_y = moving_y;
+                moveTouch.expire_count = expire_count;
 
-            if (steps > 0) {
-                int step_x = (end_x - start_x) / steps;
-                int step_y = (end_y - start_y) / steps;
-                int expire_count = move_max_step / steps;
-                
-                while (moving_y > end_y) {
-                    struct ax_touch_action moveTouch;
-                    moveTouch.touch_type = ax_touch_type_move;
-                    moveTouch.touch_x = moving_x;
-                    moveTouch.touch_y = moving_y;
-                    moveTouch.expire_count = expire_count;
+                add_ax_touch_action(moveTouch);
 
-                    add_ax_touch_action(moveTouch);
-
-                    moving_x += step_x;
-                    moving_y += step_y;
-                }
+                moving_x += step_x;
+                moving_y += step_y;
             }
 
             // end touch
@@ -270,10 +266,10 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
         handling_touch_action.expire_count -= 1;
 
         if (handling_touch_action.expire_count < 0) {
-            LOGD("consumed touch_action: type(%d) --- x(%d) --- y(%d)", 
-                handling_touch_action.touch_type, 
-                handling_touch_action.touch_x, 
-                handling_touch_action.touch_y);
+            // LOGD("consumed touch_action: type(%d) --- x(%d) --- y(%d)", 
+            //     handling_touch_action.touch_type, 
+            //     handling_touch_action.touch_x, 
+            //     handling_touch_action.touch_y);
 
             struct sc_point touchPoint = {.x = handling_touch_action.touch_x, .y = handling_touch_action.touch_y};
             
@@ -286,7 +282,7 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
                     .action = handling_touch_action.touch_type == ax_touch_type_down ? SC_ACTION_DOWN : SC_ACTION_UP,
                     .button = SC_MOUSE_BUTTON_LEFT,
                     .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
-                    .buttons_state = SC_MOUSE_BUTTON_LEFT,
+                    .buttons_state = handling_touch_action.touch_type == ax_touch_type_down ? SC_MOUSE_BUTTON_LEFT : 0,
                 };
                 ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
             } else if (handling_touch_action.touch_type == ax_touch_type_move) {
