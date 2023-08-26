@@ -7,6 +7,8 @@
 #include "util/log.h"
 #include "util/thread.h"
 #include "util/vecdeque.h"
+#include "screen.h"
+#include "input_manager.h"
 
 // MIN, MAX macro redefined in "common.h" and <sys/param.h>
 // so declare uv.h after scrcpy's header
@@ -196,10 +198,10 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
             int direction_jitter = rand() % 2;
 
             int start_x = last_send_screen_width / 2 + (direction_jitter ? pos_x_jitter : (0 - pos_x_jitter));
-            int start_y = last_send_screen_height * 2 / 3 + (direction_jitter ? pos_y_jitter : (0 - pos_y_jitter));
+            int start_y = last_send_screen_height * 3 / 4 + (direction_jitter ? pos_y_jitter : (0 - pos_y_jitter));
 
             int end_x = last_send_screen_width / 2 + (direction_jitter ? (0 - pos_x_jitter) : pos_x_jitter);
-            int end_y = last_send_screen_height / 3 + (direction_jitter ? (0 - pos_y_jitter) : pos_y_jitter);
+            int end_y = last_send_screen_height / 4 + (direction_jitter ? (0 - pos_y_jitter) : pos_y_jitter);
 
             // start touch
             struct ax_touch_action beginTouch;
@@ -272,6 +274,35 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
                 handling_touch_action.touch_type, 
                 handling_touch_action.touch_x, 
                 handling_touch_action.touch_y);
+
+            struct sc_point touchPoint = {.x = handling_touch_action.touch_x, .y = handling_touch_action.touch_y};
+            
+            if (handling_touch_action.touch_type == ax_touch_type_down || handling_touch_action.touch_type == ax_touch_type_up) {
+                struct sc_mouse_click_event clickEvt = {
+                    .position = {
+                        .screen_size = ax_sc_im->screen->frame_size,
+                        .point = touchPoint,
+                    },
+                    .action = handling_touch_action.touch_type == ax_touch_type_down ? SC_ACTION_DOWN : SC_ACTION_UP,
+                    .button = SC_MOUSE_BUTTON_LEFT,
+                    .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
+                    .buttons_state = SC_MOUSE_BUTTON_LEFT,
+                };
+                ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
+            } else if (handling_touch_action.touch_type == ax_touch_type_move) {
+                struct sc_mouse_motion_event motionEvt = {
+                    .position = {
+                        .screen_size = ax_sc_im->screen->frame_size,
+                        .point = touchPoint,
+                    },
+                    .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
+                    .xrel = 0,
+                    .yrel = 0,
+                    .buttons_state = SC_MOUSE_BUTTON_LEFT,
+                };
+
+                ax_sc_im->mp->ops->process_mouse_motion(ax_sc_im->mp, &motionEvt);
+            }
         }
     }
 }
