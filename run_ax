@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+
+./run ax_build_debug --no-audio --max-fps=30 --turn-screen-off --verbosity=verbose --serial=xxx 
