@@ -267,7 +267,7 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
         handling_touch_action.expire_count -= 1;
 
         if (handling_touch_action.expire_count < 0) {
-            LOGD("consumed touch_action: %d --- %d --- %d", 
+            LOGD("consumed touch_action: type(%d) --- x(%d) --- y(%d)", 
                 handling_touch_action.touch_type, 
                 handling_touch_action.touch_x, 
                 handling_touch_action.touch_y);
