@@ -64,8 +64,8 @@ static char android_serial[AX_SERIAL_MAX_LEN];
 static struct sc_input_manager *ax_sc_im = NULL;
 static int last_send_screen_width = 0;
 static int last_send_screen_height = 0;
-static int tmp_screen_width = 0;
-static int tmp_screen_height = 0;
+static int sc_screen_width = 0;
+static int sc_screen_height = 0;
 
 #define AX_BUF_SIZE 4096
 static char ax_content_buf[AX_BUF_SIZE];
@@ -384,9 +384,9 @@ static void sendAXCommand(char *cmd_str)
 
 static void check_report_client_info()
 {
-    if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
-        last_send_screen_width = tmp_screen_width;
-        last_send_screen_height = tmp_screen_height;
+    if (sc_screen_width != last_send_screen_width || sc_screen_height != last_send_screen_height) {
+        last_send_screen_width = sc_screen_width;
+        last_send_screen_height = sc_screen_height;
 
         char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
         LOGI("AX send command: %s", cmd_str);
@@ -619,12 +619,12 @@ int ax_stop_action()
 
 void ax_update_client_info(int screen_width, int screen_height)
 {
-    // TODO: tmp_screen_width, tmp_screen_height are multi thread access
+    // TODO: sc_screen_width, sc_screen_height are multi thread access
     // 应该不会有问题，宽高第一次设置后，应该就不会再改变
     if (ax_thread_started && ax_running && screen_width > 0 && screen_height > 0) {
-        if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
-            tmp_screen_width = screen_width;
-            tmp_screen_height = screen_height;
+        if (sc_screen_width != screen_width || sc_screen_height != screen_height) {
+            sc_screen_width = screen_width;
+            sc_screen_height = screen_height;
         }
     }
 }
