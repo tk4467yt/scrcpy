@@ -8,8 +8,6 @@
 #include "trait/frame_sink.h"
 #include "util/log.h"
 
-#include "ax_action.h"
-
 /** Downcast packet_sink to decoder */
 #define DOWNCAST(SINK) container_of(SINK, struct sc_decoder, packet_sink)
 
@@ -72,8 +70,6 @@ sc_decoder_push(struct sc_decoder *decoder, const AVPacket *packet) {
             // Error already logged
             return false;
         }
-
-        ax_update_client_info(decoder->ctx->width, decoder->ctx->height);
     }
 
     return true;

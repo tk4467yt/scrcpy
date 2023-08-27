@@ -59,7 +59,6 @@ static uv_tcp_t tcpClientSocket;
 static bool ax_running = false;
 
 static uv_async_t stop_async;
-static uv_async_t update_client_info_async;
 
 static char android_serial[AX_SERIAL_MAX_LEN];
 static struct sc_input_manager *ax_sc_im = NULL;
@@ -337,9 +336,70 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
     cJSON_Delete(cmdJson);
 }
 
+static void on_require_alloc_buf(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
+{
+    (void)handle;
+    (void)suggested_size;
+
+    buf->base = (char *)malloc(AX_BUF_SIZE);
+    buf->len = AX_BUF_SIZE;
+}
+
+static void ax_release_uv_buf(const uv_buf_t* buf)
+{
+    free(buf->base);
+}
+
+static void on_tcp_wrote_data(uv_write_t *req, int status) 
+{
+    LOGD("AX onTcpWroteData status: %d", status);
+
+    if (status) {
+        LOGE("AX onTcpWroteData failed: %s", uv_strerror(status));
+    }
+
+    // free
+    uv_buf_t tmpBuf;
+    tmpBuf.base = (char *)req->data;
+    tmpBuf.len = AX_BUF_SIZE;
+
+    ax_release_uv_buf(&tmpBuf);
+
+    free(req);
+}
+
+static void sendAXCommand(char *cmd_str)
+{
+    uv_write_t *ax_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
+    uv_buf_t writer_buf;
+    on_require_alloc_buf(NULL, 0, &writer_buf);
+
+    makeAXPacket(writer_buf.base, cmd_str);
+    writer_buf.len = strlen(cmd_str) + AX_PACKET_HEADER_LEN;
+
+    ax_writer->data = (void *)writer_buf.base;
+
+    uv_write(ax_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
+}
+
+static void check_report_client_info()
+{
+    if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
+        last_send_screen_width = tmp_screen_width;
+        last_send_screen_height = tmp_screen_height;
+
+        char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
+        LOGI("AX send command: %s", cmd_str);
+
+        sendAXCommand(cmd_str);
+    }
+}
+
 static void onAXRepeatTimerExpired(uv_timer_t *handle)
 {
     (void)handle;
+
+    check_report_client_info();
 
     if (handling_touch_action.expire_count < 0) {
         // handling touch_action invalid
@@ -428,20 +488,6 @@ static int handle_received_data(const uv_buf_t buf)
     return retVal;
 }
 
-static void on_require_alloc_buf(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
-{
-    (void)handle;
-    (void)suggested_size;
-
-    buf->base = (char *)malloc(AX_BUF_SIZE);
-    buf->len = AX_BUF_SIZE;
-}
-
-static void ax_release_uv_buf(const uv_buf_t* buf)
-{
-    free(buf->base);
-}
-
 static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     LOGD("on_readed_data: %d", (int)nread);
@@ -491,55 +537,6 @@ static void stop_async_cb(uv_async_t* handle)
     }
 }
 
-static void on_tcp_wrote_data(uv_write_t *req, int status) 
-{
-    LOGD("AX onTcpWroteData status: %d", status);
-
-    if (status) {
-        LOGE("AX onTcpWroteData failed: %s", uv_strerror(status));
-    }
-
-    // free
-    uv_buf_t tmpBuf;
-    tmpBuf.base = (char *)req->data;
-    tmpBuf.len = AX_BUF_SIZE;
-
-    ax_release_uv_buf(&tmpBuf);
-
-    free(req);
-}
-
-static void sendAXCommand(char *cmd_str)
-{
-    uv_write_t *ax_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
-    uv_buf_t writer_buf;
-    on_require_alloc_buf(NULL, 0, &writer_buf);
-
-    makeAXPacket(writer_buf.base, cmd_str);
-    writer_buf.len = strlen(cmd_str) + AX_PACKET_HEADER_LEN;
-
-    ax_writer->data = (void *)writer_buf.base;
-
-    uv_write(ax_writer, (uv_stream_t *)&tcpClientSocket, &writer_buf, 1, on_tcp_wrote_data);
-}
-
-static void update_client_info_async_cb(uv_async_t* handle)
-{
-    (void)handle;
-
-    if (ax_running) {
-        if (tmp_screen_width != last_send_screen_width || tmp_screen_height != last_send_screen_height) {
-            last_send_screen_width = tmp_screen_width;
-            last_send_screen_height = tmp_screen_height;
-
-            char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
-            LOGI("AX send command: %s", cmd_str);
-
-            sendAXCommand(cmd_str);
-        }
-    }
-}
-
 static int ax_thread_cb(void *data) 
 {
     (void)data;
@@ -550,7 +547,6 @@ static int ax_thread_cb(void *data)
     uv_loop_init(&axUVLoop);
 
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
-    uv_async_init(&axUVLoop, &update_client_info_async, update_client_info_async_cb);
 
     uv_timer_t repeatTimer;
     uv_timer_init(&axUVLoop, &repeatTimer);
@@ -629,8 +625,6 @@ void ax_update_client_info(int screen_width, int screen_height)
         if (tmp_screen_width != screen_width || tmp_screen_height != screen_height) {
             tmp_screen_width = screen_width;
             tmp_screen_height = screen_height;
-
-            uv_async_send(&update_client_info_async);
         }
     }
 }

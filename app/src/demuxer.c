@@ -12,6 +12,8 @@
 #include "util/binary.h"
 #include "util/log.h"
 
+#include "ax_action.h"
+
 #define SC_PACKET_HEADER_SIZE 12
 
 #define SC_PACKET_FLAG_CONFIG    (UINT64_C(1) << 63)
@@ -198,6 +200,8 @@ run_demuxer(void *data) {
         codec_ctx->width = width;
         codec_ctx->height = height;
         codec_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+
+        ax_update_client_info(width, height);
     } else {
         // Hardcoded audio properties
 #ifdef SCRCPY_LAVU_HAS_CHLAYOUT
