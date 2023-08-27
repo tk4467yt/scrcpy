@@ -51,6 +51,8 @@
 
 #define AX_REPEAT_TIMER_REPEAT_VAL 20 // ms
 
+static sc_mutex ax_mutex;
+
 static bool ax_thread_started = false;
 static sc_thread ax_thread;
 
@@ -384,10 +386,20 @@ static void sendAXCommand(char *cmd_str)
 
 static void check_report_client_info()
 {
+    sc_mutex_lock(&ax_mutex);
+
+    bool screen_size_updated = false;
+
     if (sc_screen_width != last_send_screen_width || sc_screen_height != last_send_screen_height) {
         last_send_screen_width = sc_screen_width;
         last_send_screen_height = sc_screen_height;
 
+        screen_size_updated = true;
+    }
+
+    sc_mutex_unlock(&ax_mutex);
+
+    if (screen_size_updated) {
         char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
         LOGI("AX send command: %s", cmd_str);
 
@@ -585,6 +597,9 @@ static int ax_thread_cb(void *data)
 int ax_start_action(const char *serial, struct sc_input_manager *sc_im)
 {
     LOGI("AX starting action: %s", serial);
+
+    sc_mutex_init(&ax_mutex);
+
     size_t serialLen = strlen(serial);
     if (serialLen > AX_SERIAL_MAX_LEN) {
         LOGE("AX serial len too large: %d", (int)serialLen);
@@ -613,18 +628,22 @@ int ax_stop_action()
         
         sc_thread_join(&ax_thread, NULL);
     }
+
+    sc_mutex_destroy(&ax_mutex);
     
     return SCRCPY_EXIT_SUCCESS;
 }
 
 void ax_update_client_info(int screen_width, int screen_height)
 {
-    // TODO: sc_screen_width, sc_screen_height are multi thread access
-    // 应该不会有问题，宽高第一次设置后，应该就不会再改变
-    if (ax_thread_started && ax_running && screen_width > 0 && screen_height > 0) {
+    if (ax_thread_started && screen_width > 0 && screen_height > 0) {
+        sc_mutex_lock(&ax_mutex);
+
         if (sc_screen_width != screen_width || sc_screen_height != screen_height) {
             sc_screen_width = screen_width;
             sc_screen_height = screen_height;
         }
+
+        sc_mutex_unlock(&ax_mutex);
     }
 }
