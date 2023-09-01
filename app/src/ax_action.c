@@ -68,7 +68,7 @@ static int last_send_screen_width = 0;
 static int last_send_screen_height = 0;
 static int sc_screen_width = 0;
 static int sc_screen_height = 0;
-static uint32_t sdl_video_codec_id = 0;
+static uint32_t av_video_codec_id = 0;
 
 #define AX_BUF_SIZE 4096
 static char ax_content_buf[AX_BUF_SIZE];
@@ -643,7 +643,7 @@ void ax_update_client_info(int screen_width, int screen_height, int video_codec_
         if (sc_screen_width != screen_width || sc_screen_height != screen_height) {
             sc_screen_width = screen_width;
             sc_screen_height = screen_height;
-            sdl_video_codec_id = video_codec_id;
+            av_video_codec_id = video_codec_id;
         }
 
         sc_mutex_unlock(&ax_mutex);
