@@ -20,6 +20,8 @@
 // packets define
 #define AX_JSON_COMMAND_SET_CLIENT_INFO "set_client_info" // set client info (client ==>> server)
 #define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
+#define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
+#define AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO "client_begin_video" // client begin transfer video AVPacket from next packet (client ==>> server)
 
 #define AX_JSON_CONTENT_KEY_COMMAND "command"
 #define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
@@ -37,6 +39,7 @@
 #define AX_JSON_KEY_CLIENT_ID "client_id"
 #define AX_JSON_KEY_SCREEN_WIDTH "screen_width"
 #define AX_JSON_KEY_SCREEN_HEIGHT "screen_height"
+#define AX_JSON_KEY_AV_VIDEO_CODEC_ID "av_video_codec_id"
 
 #define AX_PACKET_HEADER_LEN 4
 
@@ -142,6 +145,20 @@ static char * makeSetClientInfoJson(char *clientID, int screen_width, int screen
     cJSON_Delete(contentJson);
 
     char *cmd_str = makeAXCommand(AX_JSON_COMMAND_SET_CLIENT_INFO, ax_content_buf);
+
+    return cmd_str;
+}
+
+static char * makeBeginVideoModeJson()
+{
+    cJSON *contentJson = cJSON_CreateObject();
+    cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_AV_VIDEO_CODEC_ID, av_video_codec_id);
+
+    cJSON_PrintPreallocated(contentJson, ax_content_buf, AX_BUF_SIZE, false);
+
+    cJSON_Delete(contentJson);
+
+    char *cmd_str = makeAXCommand(AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO, ax_content_buf);
 
     return cmd_str;
 }
@@ -312,13 +329,13 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
 
-    LOGD("ax cmd: %s", ax_cmd_buf);
+    LOGD("ax received cmd: %s", ax_cmd_buf);
 
     char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
     int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_ERR_CODE));
 
     if (AX_ERR_CODE_SUCCESS == innerErrCode) {
-        LOGD("%s success", innerCmd);
+        // LOGD("%s success", innerCmd);
         if (strcmp(innerCmd, AX_JSON_COMMAND_SET_CLIENT_INFO) == 0) {
             
         } else if (strcmp(innerCmd, AX_JSON_COMMAND_AUTO_SCROLL) == 0) {
@@ -331,6 +348,8 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
             } else if (strcmp(innerContent, AX_SCROLL_DIRECTION_LEFT) == 0) {
                 auto_scroll_handle_4_left();
             }
+        } else if (strcmp(innerCmd, AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE) == 0) {
+            sendBeginVideoPacket();
         }
     } else {
         LOGE("AX cmd: %s failed", innerCmd);
@@ -373,6 +392,8 @@ static void on_tcp_wrote_data(uv_write_t *req, int status)
 
 static void sendAXCommand(char *cmd_str)
 {
+    LOGI("AX send cmd: %s", cmd_str);
+
     uv_write_t *ax_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
     uv_buf_t writer_buf;
     on_require_alloc_buf(NULL, 0, &writer_buf);
@@ -402,10 +423,16 @@ static void check_report_client_info()
 
     if (screen_size_updated) {
         char *cmd_str = makeSetClientInfoJson(android_serial, last_send_screen_width, last_send_screen_height);
-        LOGI("AX send command: %s", cmd_str);
 
         sendAXCommand(cmd_str);
     }
+}
+
+void sendBeginVideoPacket()
+{
+    char *cmd_str = makeBeginVideoModeJson();
+    
+     sendAXCommand(cmd_str);
 }
 
 static void onAXRepeatTimerExpired(uv_timer_t *handle)
@@ -649,3 +676,4 @@ void ax_update_client_info(int screen_width, int screen_height, int video_codec_
         sc_mutex_unlock(&ax_mutex);
     }
 }
+
