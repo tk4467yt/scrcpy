@@ -19,11 +19,15 @@
 
 // packets define
 #define AX_JSON_COMMAND_SET_CLIENT_INFO "set_client_info" // set client info (client ==>> server)
-#define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
-#define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
 #define AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO "client_begin_video" // client begin transfer video AVPacket from next packet (client ==>> server)
 
+#define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
+#define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
+
+#define AX_JSON_COMMAND_CMD_RESPONSE "cmd_response" // response to received command (client <<==>> server)
+
 #define AX_JSON_CONTENT_KEY_COMMAND "command"
+#define AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND "response_2_command"
 #define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
 #define AX_JSON_CONTENT_KEY_CONTENT "content"
 #define AX_JSON_CONTENT_KEY_ERR_CODE "err_code"
@@ -341,15 +345,15 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
 
-    LOGD("ax received cmd: %s", ax_cmd_buf);
+    LOGD("ax received: %s", ax_cmd_buf);
 
     char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
     int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_ERR_CODE));
 
     if (AX_ERR_CODE_SUCCESS == innerErrCode) {
         // LOGD("%s success", innerCmd);
-        if (strcmp(innerCmd, AX_JSON_COMMAND_SET_CLIENT_INFO) == 0) {
-            
+        if (strcmp(innerCmd, AX_JSON_COMMAND_CMD_RESPONSE) == 0) {
+            // no handle response
         } else if (strcmp(innerCmd, AX_JSON_COMMAND_AUTO_SCROLL) == 0) {
             // origin at left-top
 
@@ -386,7 +390,7 @@ static void ax_release_uv_buf(const uv_buf_t* buf)
 
 static void on_tcp_wrote_data(uv_write_t *req, int status) 
 {
-    LOGD("AX onTcpWroteData status: %d", status);
+    // LOGD("AX onTcpWroteData status: %d", status);
 
     if (status) {
         LOGE("AX onTcpWroteData failed: %s", uv_strerror(status));
@@ -404,7 +408,7 @@ static void on_tcp_wrote_data(uv_write_t *req, int status)
 
 static void sendAXCommand(char *cmd_str)
 {
-    LOGI("AX send cmd: %s", cmd_str);
+    LOGI("AX send: %s", cmd_str);
 
     uv_write_t *ax_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
     uv_buf_t writer_buf;
