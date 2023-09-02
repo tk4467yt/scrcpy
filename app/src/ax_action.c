@@ -119,11 +119,23 @@ static char * makeAXPacket(char *packet_buf, char *cmd_str)
     return packet_buf;
 }
 
+static char * makeNextUVUniqueID()
+{
+    static char unique_id_buf[100];
+    static int lastUVUniqueID = 0;
+    
+    ++lastUVUniqueID;
+
+    SDL_itoa(lastUVUniqueID, unique_id_buf, 10);
+
+    return unique_id_buf;
+}
+
 static char * makeAXCommand(char *cmd, char *content)
 {
     cJSON *cmdJson = cJSON_CreateObject();
     cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_COMMAND, cmd);
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, "");
+    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, makeNextUVUniqueID());
     cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_CONTENT, content);
 
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
