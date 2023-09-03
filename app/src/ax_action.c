@@ -237,7 +237,7 @@ static void auto_scroll_handle_4_up()
     LOGD("auto scroll up");
 
     int jitter_limit_small = 100;
-    int jitter_limit_large = 300;
+    int jitter_limit_large = 200;
 
     int start_x = last_send_screen_width / 2 + make_ax_jitter(jitter_limit_large);
     int start_y = last_send_screen_height * 3 / 4  + make_ax_jitter(jitter_limit_small);
@@ -291,7 +291,7 @@ void auto_scroll_handle_4_left()
     LOGD("auto scroll left");
 
     int jitter_limit_small = 100;
-    int jitter_limit_large = 500;
+    int jitter_limit_large = 200;
 
     int start_x = last_send_screen_width * 3 / 4 + make_ax_jitter(jitter_limit_small);
     int start_y = last_send_screen_height / 2  + make_ax_jitter(jitter_limit_large);
