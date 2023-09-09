@@ -448,7 +448,7 @@ void sendBeginVideoPacket()
 {
     char *cmd_str = makeBeginVideoModeJson();
     
-     sendAXCommand(cmd_str);
+    sendAXCommand(cmd_str);
 }
 
 static void onAXRepeatTimerExpired(uv_timer_t *handle)
