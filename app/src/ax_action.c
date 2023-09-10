@@ -68,6 +68,7 @@ static uv_tcp_t tcpClientSocket;
 static bool ax_running = false;
 
 static uv_async_t stop_async;
+static uv_async_t send_video_async;
 
 static char android_serial[AX_SERIAL_MAX_LEN];
 static struct sc_input_manager *ax_sc_im = NULL;
@@ -85,7 +86,11 @@ static char ax_cmd_buf[AX_BUF_SIZE];
 static char ax_readed_buf[AX_READED_BUF_SIZE];
 static size_t readed_buf_used_size = 0;
 
-bool client_should_send_video = false;
+static bool client_should_send_video = false;
+
+#define AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN (10 * 1024 * 1024) // 10M
+static uint8_t ax_sending_video_packet_buf[AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN];
+static int ax_sending_video_packet_length = 0;
 
 #define ax_delayed_type_touch_down 0
 #define ax_delayed_type_touch_up 1
@@ -620,6 +625,22 @@ static void stop_async_cb(uv_async_t* handle)
     }
 }
 
+static void send_video_async_cb(uv_async_t* handle)
+{
+    (void)handle;
+
+    if (ax_running) {
+        sc_mutex_lock(&ax_mutex);
+
+        if (ax_sending_video_packet_length > 0) {
+            LOGD("AX send video packet: %d", ax_sending_video_packet_length);
+            ax_sending_video_packet_length = 0;
+        }
+
+        sc_mutex_unlock(&ax_mutex);
+    }
+}
+
 static int ax_thread_cb(void *data) 
 {
     (void)data;
@@ -630,6 +651,7 @@ static int ax_thread_cb(void *data)
     uv_loop_init(&axUVLoop);
 
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
+    uv_async_init(&axUVLoop, &send_video_async, send_video_async_cb);
 
     uv_timer_t repeatTimer;
     uv_timer_init(&axUVLoop, &repeatTimer);
@@ -727,7 +749,26 @@ bool ax_should_send_video()
 
 void ax_send_videoPacket(uint8_t *data, int length)
 {
-    (void)data;
-    LOGD("video packet size: %d", length);
+    sc_mutex_lock(&ax_mutex);
+
+    bool can_send = true;
+
+    if (ax_sending_video_packet_length > 0) {
+        LOGW("AX last video packet not sent");
+        can_send = false;
+    }
+    if (length > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN) {
+        LOGE("AX video too long: %d", length);
+        can_send = false;
+    }
+
+    if (can_send) {
+        memcpy(ax_sending_video_packet_buf, data, length);
+        ax_sending_video_packet_length = length;
+    }
+
+    sc_mutex_unlock(&ax_mutex);
+
+    uv_async_send(&send_video_async);
 }
 
