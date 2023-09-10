@@ -85,9 +85,12 @@ static char ax_cmd_buf[AX_BUF_SIZE];
 static char ax_readed_buf[AX_READED_BUF_SIZE];
 static size_t readed_buf_used_size = 0;
 
+bool client_should_send_video = false;
+
 #define ax_delayed_type_touch_down 0
 #define ax_delayed_type_touch_up 1
 #define ax_delayed_type_touch_move 2
+#define ax_delayed_type_set_video_mode 3
 struct ax_delayed_action
 {
     int delayed_type; // like ax_delayed_type_touch_down
@@ -354,6 +357,14 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         // LOGD("%s success", innerCmd);
         if (strcmp(innerCmd, AX_JSON_COMMAND_CMD_RESPONSE) == 0) {
             // no handle response
+            char *innerResponse2Cmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND));
+            if (strcmp(innerResponse2Cmd, AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO) == 0) {
+                struct ax_delayed_action tmpAction;
+                tmpAction.delayed_type = ax_delayed_type_set_video_mode;
+                tmpAction.expire_count = 10;
+
+                add_ax_delayed_action(tmpAction);
+            }
         } else if (strcmp(innerCmd, AX_JSON_COMMAND_AUTO_SCROLL) == 0) {
             // origin at left-top
 
@@ -451,6 +462,17 @@ void sendBeginVideoPacket()
     sendAXCommand(cmd_str);
 }
 
+static bool isAxDelayedTypeIsTouch(int delayed_type)
+{
+    if (ax_delayed_type_touch_down == delayed_type || 
+        ax_delayed_type_touch_up == delayed_type ||
+        ax_delayed_type_touch_move == delayed_type) {
+        return true;
+    }
+
+    return false;
+}
+
 static void onAXRepeatTimerExpired(uv_timer_t *handle)
 {
     (void)handle;
@@ -474,34 +496,39 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
             //     handling_delayed_action.delayed_type, 
             //     handling_delayed_action.touch_x, 
             //     handling_delayed_action.touch_y);
-
-            struct sc_point touchPoint = {.x = handling_delayed_action.touch_x, .y = handling_delayed_action.touch_y};
+            int delayed_type = handling_delayed_action.delayed_type;
+            if (isAxDelayedTypeIsTouch(delayed_type)) {
+                struct sc_point touchPoint = {.x = handling_delayed_action.touch_x, .y = handling_delayed_action.touch_y};
             
-            if (handling_delayed_action.delayed_type == ax_delayed_type_touch_down || handling_delayed_action.delayed_type == ax_delayed_type_touch_up) {
-                struct sc_mouse_click_event clickEvt = {
-                    .position = {
-                        .screen_size = ax_sc_im->screen->frame_size,
-                        .point = touchPoint,
-                    },
-                    .action = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_ACTION_DOWN : SC_ACTION_UP,
-                    .button = SC_MOUSE_BUTTON_LEFT,
-                    .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
-                    .buttons_state = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_MOUSE_BUTTON_LEFT : 0,
-                };
-                ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
-            } else if (handling_delayed_action.delayed_type == ax_delayed_type_touch_move) {
-                struct sc_mouse_motion_event motionEvt = {
-                    .position = {
-                        .screen_size = ax_sc_im->screen->frame_size,
-                        .point = touchPoint,
-                    },
-                    .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
-                    .xrel = 0,
-                    .yrel = 0,
-                    .buttons_state = SC_MOUSE_BUTTON_LEFT,
-                };
+                if (ax_delayed_type_touch_down == delayed_type || ax_delayed_type_touch_up == delayed_type) {
+                    struct sc_mouse_click_event clickEvt = {
+                        .position = {
+                            .screen_size = ax_sc_im->screen->frame_size,
+                            .point = touchPoint,
+                        },
+                        .action = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_ACTION_DOWN : SC_ACTION_UP,
+                        .button = SC_MOUSE_BUTTON_LEFT,
+                        .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
+                        .buttons_state = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_MOUSE_BUTTON_LEFT : 0,
+                    };
+                    ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
+                } else if (ax_delayed_type_touch_move == delayed_type) {
+                    struct sc_mouse_motion_event motionEvt = {
+                        .position = {
+                            .screen_size = ax_sc_im->screen->frame_size,
+                            .point = touchPoint,
+                        },
+                        .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
+                        .xrel = 0,
+                        .yrel = 0,
+                        .buttons_state = SC_MOUSE_BUTTON_LEFT,
+                    };
 
-                ax_sc_im->mp->ops->process_mouse_motion(ax_sc_im->mp, &motionEvt);
+                    ax_sc_im->mp->ops->process_mouse_motion(ax_sc_im->mp, &motionEvt);
+                }
+            } else if (ax_delayed_type_set_video_mode == delayed_type) {
+                client_should_send_video = true;
+                LOGI("AX video state set");
             }
         }
     }
@@ -695,6 +722,6 @@ void ax_update_client_info(int screen_width, int screen_height, int video_codec_
 
 bool ax_should_send_video()
 {
-    return false;
+    return client_should_send_video;
 }
 
