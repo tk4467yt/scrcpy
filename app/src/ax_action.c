@@ -413,11 +413,13 @@ static void on_tcp_wrote_data(uv_write_t *req, int status)
     }
 
     // free
-    uv_buf_t tmpBuf;
-    tmpBuf.base = (char *)req->data;
-    tmpBuf.len = AX_BUF_SIZE;
+    if (NULL != req->data) {
+        uv_buf_t tmpBuf;
+        tmpBuf.base = (char *)req->data;
+        tmpBuf.len = AX_BUF_SIZE;
 
-    ax_release_uv_buf(&tmpBuf);
+        ax_release_uv_buf(&tmpBuf);
+    }
 
     free(req);
 }
@@ -634,6 +636,13 @@ static void send_video_async_cb(uv_async_t* handle)
 
         if (ax_sending_video_packet_length > 0) {
             LOGD("AX send video packet: %d", ax_sending_video_packet_length);
+
+            uv_buf_t tmp_buf = uv_buf_init((char *)ax_sending_video_packet_buf, ax_sending_video_packet_length);
+
+            uv_write_t *ax_writer = (uv_write_t *)malloc(sizeof(uv_write_t));
+            ax_writer->data = NULL;
+            uv_write(ax_writer, (uv_stream_t *)&tcpClientSocket, &tmp_buf, 1, on_tcp_wrote_data);
+
             ax_sending_video_packet_length = 0;
         }
 
@@ -757,14 +766,20 @@ void ax_send_videoPacket(uint8_t *data, int length)
         LOGW("AX last video packet not sent");
         can_send = false;
     }
-    if (length > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN) {
+    // video packet prefix with 4bytes length header
+    if (length + AX_PACKET_HEADER_LEN > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN) {
         LOGE("AX video too long: %d", length);
         can_send = false;
     }
 
     if (can_send) {
-        memcpy(ax_sending_video_packet_buf, data, length);
-        ax_sending_video_packet_length = length;
+        ax_sending_video_packet_buf[0] = (length >> 24) & 0xff;
+        ax_sending_video_packet_buf[1] = (length >> 16) & 0xff;
+        ax_sending_video_packet_buf[2] = (length >> 8) & 0xff;
+        ax_sending_video_packet_buf[3] = length & 0xff;
+
+        memcpy(ax_sending_video_packet_buf+AX_PACKET_HEADER_LEN, data, length);
+        ax_sending_video_packet_length = length+AX_PACKET_HEADER_LEN;
     }
 
     sc_mutex_unlock(&ax_mutex);
