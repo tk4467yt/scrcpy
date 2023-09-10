@@ -85,26 +85,26 @@ static char ax_cmd_buf[AX_BUF_SIZE];
 static char ax_readed_buf[AX_READED_BUF_SIZE];
 static size_t readed_buf_used_size = 0;
 
-#define ax_touch_type_down 0
-#define ax_touch_type_up 1
-#define ax_touch_type_move 2
-struct ax_touch_action
+#define ax_delayed_type_touch_down 0
+#define ax_delayed_type_touch_up 1
+#define ax_delayed_type_touch_move 2
+struct ax_delayed_action
 {
-    int touch_type; // like ax_touch_type_down
+    int delayed_type; // like ax_delayed_type_touch_down
 
     int touch_x;
     int touch_y;
 
     int expire_count; // if > 0, valid
 };
-struct ax_touch_queue SC_VECDEQUE(struct ax_touch_action);
-struct ax_touch_queue ax_pending_touch_queue;
-struct ax_touch_action handling_touch_action = {0, 0, 0, -1};
+struct ax_delayed_action_queue SC_VECDEQUE(struct ax_delayed_action);
+struct ax_delayed_action_queue ax_pending_delayed_queue;
+struct ax_delayed_action handling_delayed_action = {0, 0, 0, -1};
 
 // touch utility
-static void add_ax_touch_action(struct ax_touch_action touchAction)
+static void add_ax_delayed_action(struct ax_delayed_action touchAction)
 {
-    sc_vecdeque_push(&ax_pending_touch_queue, touchAction);
+    sc_vecdeque_push(&ax_pending_delayed_queue, touchAction);
 }
 
 // packets utility
@@ -246,13 +246,13 @@ static void auto_scroll_handle_4_up()
     int end_y = start_y - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_small);
 
     // start touch
-    struct ax_touch_action beginTouch;
-    beginTouch.touch_type = ax_touch_type_down;
+    struct ax_delayed_action beginTouch;
+    beginTouch.delayed_type = ax_delayed_type_touch_down;
     beginTouch.touch_x = start_x;
     beginTouch.touch_y = start_y;
     beginTouch.expire_count = 0;
 
-    add_ax_touch_action(beginTouch);
+    add_ax_delayed_action(beginTouch);
 
     // moving
     int jitter_step = 2;
@@ -264,26 +264,26 @@ static void auto_scroll_handle_4_up()
     int moving_x = start_x;
     int moving_y = start_y;
     while (moving_y > end_y) {
-        struct ax_touch_action moveTouch;
-        moveTouch.touch_type = ax_touch_type_move;
+        struct ax_delayed_action moveTouch;
+        moveTouch.delayed_type = ax_delayed_type_touch_move;
         moveTouch.touch_x = moving_x;
         moveTouch.touch_y = moving_y;
         moveTouch.expire_count = expire_count;
 
-        add_ax_touch_action(moveTouch);
+        add_ax_delayed_action(moveTouch);
 
         moving_x += step_x;
         moving_y += step_y;
     }
 
     // end touch
-    struct ax_touch_action endTouch;
-    endTouch.touch_type = ax_touch_type_up;
+    struct ax_delayed_action endTouch;
+    endTouch.delayed_type = ax_delayed_type_touch_up;
     endTouch.touch_x = end_x;
     endTouch.touch_y = end_y;
     endTouch.expire_count = 0;
 
-    add_ax_touch_action(endTouch);
+    add_ax_delayed_action(endTouch);
 }
 
 void auto_scroll_handle_4_left()
@@ -300,13 +300,13 @@ void auto_scroll_handle_4_left()
     int end_y = start_y + make_ax_jitter(jitter_limit_small);
 
     // start touch
-    struct ax_touch_action beginTouch;
-    beginTouch.touch_type = ax_touch_type_down;
+    struct ax_delayed_action beginTouch;
+    beginTouch.delayed_type = ax_delayed_type_touch_down;
     beginTouch.touch_x = start_x;
     beginTouch.touch_y = start_y;
     beginTouch.expire_count = 0;
 
-    add_ax_touch_action(beginTouch);
+    add_ax_delayed_action(beginTouch);
 
     // moving
     int jitter_step = 2;
@@ -318,26 +318,26 @@ void auto_scroll_handle_4_left()
     int moving_x = start_x;
     int moving_y = start_y;
     while (moving_x > end_x) {
-        struct ax_touch_action moveTouch;
-        moveTouch.touch_type = ax_touch_type_move;
+        struct ax_delayed_action moveTouch;
+        moveTouch.delayed_type = ax_delayed_type_touch_move;
         moveTouch.touch_x = moving_x;
         moveTouch.touch_y = moving_y;
         moveTouch.expire_count = expire_count;
 
-        add_ax_touch_action(moveTouch);
+        add_ax_delayed_action(moveTouch);
 
         moving_x += step_x;
         moving_y += step_y;
     }
 
     // end touch
-    struct ax_touch_action endTouch;
-    endTouch.touch_type = ax_touch_type_up;
+    struct ax_delayed_action endTouch;
+    endTouch.delayed_type = ax_delayed_type_touch_up;
     endTouch.touch_x = end_x;
     endTouch.touch_y = end_y;
     endTouch.expire_count = 0;
 
-    add_ax_touch_action(endTouch);
+    add_ax_delayed_action(endTouch);
 }
 
 static void handle_ax_json_cmd(const uv_buf_t buf)
@@ -457,39 +457,39 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
 
     check_report_client_info();
 
-    if (handling_touch_action.expire_count < 0) {
+    if (handling_delayed_action.expire_count < 0) {
         // handling touch_action invalid
-        if (sc_vecdeque_is_empty(&ax_pending_touch_queue)) {
+        if (sc_vecdeque_is_empty(&ax_pending_delayed_queue)) {
             // queue empty, nothing todo
         } else {
-            handling_touch_action = sc_vecdeque_pop(&ax_pending_touch_queue);
+            handling_delayed_action = sc_vecdeque_pop(&ax_pending_delayed_queue);
         }
     }
     
-    if (handling_touch_action.expire_count >= 0) {
-        handling_touch_action.expire_count -= 1;
+    if (handling_delayed_action.expire_count >= 0) {
+        handling_delayed_action.expire_count -= 1;
 
-        if (handling_touch_action.expire_count < 0) {
+        if (handling_delayed_action.expire_count < 0) {
             // LOGD("consumed touch_action: type(%d) --- x(%d) --- y(%d)", 
-            //     handling_touch_action.touch_type, 
-            //     handling_touch_action.touch_x, 
-            //     handling_touch_action.touch_y);
+            //     handling_delayed_action.delayed_type, 
+            //     handling_delayed_action.touch_x, 
+            //     handling_delayed_action.touch_y);
 
-            struct sc_point touchPoint = {.x = handling_touch_action.touch_x, .y = handling_touch_action.touch_y};
+            struct sc_point touchPoint = {.x = handling_delayed_action.touch_x, .y = handling_delayed_action.touch_y};
             
-            if (handling_touch_action.touch_type == ax_touch_type_down || handling_touch_action.touch_type == ax_touch_type_up) {
+            if (handling_delayed_action.delayed_type == ax_delayed_type_touch_down || handling_delayed_action.delayed_type == ax_delayed_type_touch_up) {
                 struct sc_mouse_click_event clickEvt = {
                     .position = {
                         .screen_size = ax_sc_im->screen->frame_size,
                         .point = touchPoint,
                     },
-                    .action = handling_touch_action.touch_type == ax_touch_type_down ? SC_ACTION_DOWN : SC_ACTION_UP,
+                    .action = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_ACTION_DOWN : SC_ACTION_UP,
                     .button = SC_MOUSE_BUTTON_LEFT,
                     .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
-                    .buttons_state = handling_touch_action.touch_type == ax_touch_type_down ? SC_MOUSE_BUTTON_LEFT : 0,
+                    .buttons_state = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_MOUSE_BUTTON_LEFT : 0,
                 };
                 ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
-            } else if (handling_touch_action.touch_type == ax_touch_type_move) {
+            } else if (handling_delayed_action.delayed_type == ax_delayed_type_touch_move) {
                 struct sc_mouse_motion_event motionEvt = {
                     .position = {
                         .screen_size = ax_sc_im->screen->frame_size,
@@ -598,7 +598,7 @@ static int ax_thread_cb(void *data)
     (void)data;
     LOGI("AX thread running");
 
-    sc_vecdeque_init(&ax_pending_touch_queue);
+    sc_vecdeque_init(&ax_pending_delayed_queue);
 
     uv_loop_init(&axUVLoop);
 
@@ -633,7 +633,7 @@ static int ax_thread_cb(void *data)
     uv_loop_close(&axUVLoop);
 
     ax_running = false;
-    sc_vecdeque_destroy(&ax_pending_touch_queue);
+    sc_vecdeque_destroy(&ax_pending_delayed_queue);
 
     return SCRCPY_EXIT_SUCCESS;
 }
@@ -691,5 +691,10 @@ void ax_update_client_info(int screen_width, int screen_height, int video_codec_
 
         sc_mutex_unlock(&ax_mutex);
     }
+}
+
+bool ax_should_send_video()
+{
+    return false;
 }
 
