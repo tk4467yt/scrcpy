@@ -255,6 +255,10 @@ run_demuxer(void *data) {
             }
         }
 
+         if (ax_should_send_video()) {
+            ax_send_videoPacket(packet->data, packet->size);
+        }
+
         ok = sc_packet_source_sinks_push(&demuxer->packet_source, packet);
         av_packet_unref(packet);
         if (!ok) {

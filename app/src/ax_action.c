@@ -725,3 +725,9 @@ bool ax_should_send_video()
     return client_should_send_video;
 }
 
+void ax_send_videoPacket(uint8_t *data, int length)
+{
+    (void)data;
+    LOGD("video packet size: %d", length);
+}
+
