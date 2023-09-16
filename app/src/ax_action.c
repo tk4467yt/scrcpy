@@ -637,7 +637,7 @@ static void send_video_async_cb(uv_async_t* handle)
         sc_mutex_lock(&ax_mutex);
 
         if (ax_sending_video_packet_length > 0) {
-            LOGD("AX send video packet: %d", ax_sending_video_packet_length);
+            // LOGD("AX send video packet: %d", ax_sending_video_packet_length);
 
             uv_buf_t tmp_buf = uv_buf_init((char *)ax_sending_video_packet_buf, ax_sending_video_packet_length);
 
