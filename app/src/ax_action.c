@@ -769,21 +769,40 @@ static void ax_inner_send_avPacket(AVPacket *packet)
         can_send = false;
     }
 
-    int length = packet->size;
+    int pktSize = packet->size;
+    int headerSize = 16;
+    int totalSize = pktSize + headerSize;
     // video packet prefix with 4bytes length header
-    if (length + AX_PACKET_HEADER_LEN > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN) {
-        LOGE("AX video too long: %d", length);
+    if (totalSize > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN) {
+        LOGE("AX video too long: %d", totalSize);
         can_send = false;
     }
 
     if (can_send) {
-        ax_sending_video_packet_buf[0] = (length >> 24) & 0xff;
-        ax_sending_video_packet_buf[1] = (length >> 16) & 0xff;
-        ax_sending_video_packet_buf[2] = (length >> 8) & 0xff;
-        ax_sending_video_packet_buf[3] = length & 0xff;
+        // total size
+        ax_sending_video_packet_buf[0] = (totalSize >> 24) & 0xff;
+        ax_sending_video_packet_buf[1] = (totalSize >> 16) & 0xff;
+        ax_sending_video_packet_buf[2] = (totalSize >> 8) & 0xff;
+        ax_sending_video_packet_buf[3] = totalSize & 0xff;
+        //pts
+        int64_t pts = packet->pts;
+        ax_sending_video_packet_buf[4] = (pts >> 56) & 0xff;
+        ax_sending_video_packet_buf[5] = (pts >> 48) & 0xff;
+        ax_sending_video_packet_buf[6] = (pts >> 40) & 0xff;
+        ax_sending_video_packet_buf[7] = (pts >> 32) & 0xff;
+        ax_sending_video_packet_buf[8] = (pts >> 24) & 0xff;
+        ax_sending_video_packet_buf[9] = (pts >> 16) & 0xff;
+        ax_sending_video_packet_buf[10] = (pts >> 8) & 0xff;
+        ax_sending_video_packet_buf[11] = pts & 0xff;
+        //flag
+        int flags = packet->flags;
+        ax_sending_video_packet_buf[12] = (flags >> 24) & 0xff;
+        ax_sending_video_packet_buf[13] = (flags >> 16) & 0xff;
+        ax_sending_video_packet_buf[14] = (flags >> 8) & 0xff;
+        ax_sending_video_packet_buf[15] = flags & 0xff;
 
-        memcpy(ax_sending_video_packet_buf+AX_PACKET_HEADER_LEN, packet->data, length);
-        ax_sending_video_packet_length = length+AX_PACKET_HEADER_LEN;
+        memcpy(ax_sending_video_packet_buf+headerSize, packet->data, pktSize);
+        ax_sending_video_packet_length = totalSize;
 
         uv_async_send(&send_video_async);
     }
