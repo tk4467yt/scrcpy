@@ -623,10 +623,6 @@ static void on_tcp_connected(uv_connect_t* req, int status)
     }
     LOGI("AX tcp connected");
 
-    uv_timer_t repeatTimer;
-    uv_timer_init(&axUVLoop, &repeatTimer);
-    uv_timer_start(&repeatTimer, onAXRepeatTimerExpired, 1000, AX_REPEAT_TIMER_REPEAT_VAL);
-
     uv_read_start((uv_stream_t *)req->handle, on_require_alloc_buf, on_readed_data);
 }
 
@@ -675,6 +671,10 @@ static int ax_thread_cb(void *data)
 
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
     uv_async_init(&axUVLoop, &send_video_async, send_video_async_cb);
+
+    uv_timer_t repeatTimer;
+    uv_timer_init(&axUVLoop, &repeatTimer);
+    uv_timer_start(&repeatTimer, onAXRepeatTimerExpired, 1000, AX_REPEAT_TIMER_REPEAT_VAL);
 
     uv_tcp_init(&axUVLoop, &tcpClientSocket);
 
