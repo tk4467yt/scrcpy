@@ -486,6 +486,11 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
 {
     (void)handle;
 
+    if (!ax_running) {
+        LOGE("ax not running, but onAXRepeatTimerExpired");
+        return;
+    }
+
     check_report_client_info();
 
     if (handling_delayed_action.expire_count < 0) {
@@ -595,7 +600,7 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
     } else {
         if (nread < 0) {
             if (nread != UV_EOF) {
-                LOGE("AX uv_tcp_connect failed: %s", uv_strerror(nread));
+                LOGE("AX on_readed_data failed: %s", uv_strerror(nread));
             }
             
             uv_close((uv_handle_t*) stream, NULL);
@@ -609,11 +614,18 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 static void on_tcp_connected(uv_connect_t* req, int status)
 {
     if (status) {
-        LOGE("AX uv_tcp_connect failed: %s", uv_strerror(status));
+        LOGE("AX on_tcp_connected failed: %s", uv_strerror(status));
         ax_running = false;
+
+        uv_stop(&axUVLoop);
+
         return;
     }
     LOGI("AX tcp connected");
+
+    uv_timer_t repeatTimer;
+    uv_timer_init(&axUVLoop, &repeatTimer);
+    uv_timer_start(&repeatTimer, onAXRepeatTimerExpired, 1000, AX_REPEAT_TIMER_REPEAT_VAL);
 
     uv_read_start((uv_stream_t *)req->handle, on_require_alloc_buf, on_readed_data);
 }
@@ -664,11 +676,6 @@ static int ax_thread_cb(void *data)
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
     uv_async_init(&axUVLoop, &send_video_async, send_video_async_cb);
 
-    uv_timer_t repeatTimer;
-    uv_timer_init(&axUVLoop, &repeatTimer);
-    uv_timer_start(&repeatTimer, onAXRepeatTimerExpired, 1000, AX_REPEAT_TIMER_REPEAT_VAL);
-
-    
     uv_tcp_init(&axUVLoop, &tcpClientSocket);
 
     struct sockaddr_in serverAddr;
@@ -729,9 +736,8 @@ int ax_stop_action()
 
     if (ax_thread_started && ax_running) {
         uv_async_send(&stop_async);
-        
-        sc_thread_join(&ax_thread, NULL);
     }
+    sc_thread_join(&ax_thread, NULL);
 
     sc_mutex_destroy(&ax_mutex);
     
@@ -812,13 +818,15 @@ static void ax_inner_send_avPacket(AVPacket *packet)
 
 void ax_send_videoPacket(AVPacket *packet)
 {
-    if(NULL != last_missed_key_packet) {
-        ax_inner_send_avPacket(last_missed_key_packet);
+    if (ax_thread_started && ax_running) {
+        if(NULL != last_missed_key_packet) {
+            ax_inner_send_avPacket(last_missed_key_packet);
 
-        av_packet_unref(last_missed_key_packet);
-        last_missed_key_packet = NULL;
-    } else {
-        ax_inner_send_avPacket(packet);
+            av_packet_unref(last_missed_key_packet);
+            last_missed_key_packet = NULL;
+        } else {
+            ax_inner_send_avPacket(packet);
+        }
     }
 }
 
