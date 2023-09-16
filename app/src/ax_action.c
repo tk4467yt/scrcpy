@@ -109,6 +109,8 @@ struct ax_delayed_action_queue SC_VECDEQUE(struct ax_delayed_action);
 struct ax_delayed_action_queue ax_pending_delayed_queue;
 struct ax_delayed_action handling_delayed_action = {0, 0, 0, -1};
 
+static AVPacket *last_missed_key_packet = NULL;
+
 // touch utility
 static void add_ax_delayed_action(struct ax_delayed_action touchAction)
 {
@@ -756,7 +758,7 @@ bool ax_should_send_video()
     return client_should_send_video;
 }
 
-void ax_send_videoPacket(uint8_t *data, int length)
+static void ax_inner_send_avPacket(AVPacket *packet) 
 {
     sc_mutex_lock(&ax_mutex);
 
@@ -766,6 +768,8 @@ void ax_send_videoPacket(uint8_t *data, int length)
         LOGW("AX last video packet not sent");
         can_send = false;
     }
+
+    int length = packet->size;
     // video packet prefix with 4bytes length header
     if (length + AX_PACKET_HEADER_LEN > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN) {
         LOGE("AX video too long: %d", length);
@@ -778,12 +782,33 @@ void ax_send_videoPacket(uint8_t *data, int length)
         ax_sending_video_packet_buf[2] = (length >> 8) & 0xff;
         ax_sending_video_packet_buf[3] = length & 0xff;
 
-        memcpy(ax_sending_video_packet_buf+AX_PACKET_HEADER_LEN, data, length);
+        memcpy(ax_sending_video_packet_buf+AX_PACKET_HEADER_LEN, packet->data, length);
         ax_sending_video_packet_length = length+AX_PACKET_HEADER_LEN;
+
+        uv_async_send(&send_video_async);
     }
 
     sc_mutex_unlock(&ax_mutex);
+}
 
-    uv_async_send(&send_video_async);
+void ax_send_videoPacket(AVPacket *packet)
+{
+    if(NULL != last_missed_key_packet) {
+        ax_inner_send_avPacket(last_missed_key_packet);
+
+        av_packet_unref(last_missed_key_packet);
+        last_missed_key_packet = NULL;
+    } else {
+        ax_inner_send_avPacket(packet);
+    }
+}
+
+void ax_set_missed_key_packet(AVPacket *keyPacket)
+{
+    if(NULL != last_missed_key_packet) {
+        av_packet_unref(last_missed_key_packet);
+    }
+
+    last_missed_key_packet = av_packet_clone(keyPacket);
 }
 

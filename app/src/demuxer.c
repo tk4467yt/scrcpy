@@ -131,7 +131,7 @@ sc_demuxer_recv_packet(struct sc_demuxer *demuxer, AVPacket *packet) {
     if (pts_flags & SC_PACKET_FLAG_KEY_FRAME) {
         packet->flags |= AV_PKT_FLAG_KEY;
     }
-
+    
     packet->dts = packet->pts;
     return true;
 }
@@ -255,8 +255,12 @@ run_demuxer(void *data) {
             }
         }
 
-         if (ax_should_send_video()) {
-            ax_send_videoPacket(packet->data, packet->size);
+        if (ax_should_send_video()) {
+            ax_send_videoPacket(packet);
+        } else {
+            if (packet->flags & AV_PKT_FLAG_KEY) {
+                ax_set_missed_key_packet(packet);
+            }
         }
 
         ok = sc_packet_source_sinks_push(&demuxer->packet_source, packet);
