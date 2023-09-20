@@ -70,6 +70,8 @@ static bool ax_running = false;
 static uv_async_t stop_async;
 static uv_async_t send_video_async;
 
+static uv_timer_t repeatTimer;
+
 static char android_serial[AX_SERIAL_MAX_LEN];
 static struct sc_input_manager *ax_sc_im = NULL;
 static int last_send_screen_width = 0;
@@ -611,13 +613,21 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
     ax_release_uv_buf(buf);
 }
 
+static void ax_close_handles_and_stop()
+{
+    uv_timer_stop(&repeatTimer);
+    uv_close((uv_handle_t *)&tcpClientSocket, NULL);
+
+    uv_stop(&axUVLoop);
+}
+
 static void on_tcp_connected(uv_connect_t* req, int status)
 {
     if (status) {
         LOGE("AX on_tcp_connected failed: %s", uv_strerror(status));
         ax_running = false;
 
-        uv_stop(&axUVLoop);
+        ax_close_handles_and_stop();
 
         return;
     }
@@ -633,7 +643,7 @@ static void stop_async_cb(uv_async_t* handle)
     if (ax_running) {
         LOGI("AX stop async callback called");
 
-        uv_stop(&axUVLoop);
+        ax_close_handles_and_stop();
     }
 }
 
@@ -672,7 +682,6 @@ static int ax_thread_cb(void *data)
     uv_async_init(&axUVLoop, &stop_async, stop_async_cb);
     uv_async_init(&axUVLoop, &send_video_async, send_video_async_cb);
 
-    uv_timer_t repeatTimer;
     uv_timer_init(&axUVLoop, &repeatTimer);
     uv_timer_start(&repeatTimer, onAXRepeatTimerExpired, 1000, AX_REPEAT_TIMER_REPEAT_VAL);
 
@@ -694,10 +703,13 @@ static int ax_thread_cb(void *data)
 
     retVal = uv_run(&axUVLoop, UV_RUN_DEFAULT);
     if (retVal) {
-        LOGI("AX uv_run broken");
+        LOGI("AX uv_run failed");
     }
 
-    uv_loop_close(&axUVLoop);
+    retVal = uv_loop_close(&axUVLoop);
+    if (retVal) {
+        LOGI("AX uv_loop_close failed: %s", uv_strerror(retVal));
+    }
 
     ax_running = false;
     sc_vecdeque_destroy(&ax_pending_delayed_queue);
