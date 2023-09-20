@@ -615,6 +615,9 @@ static void on_readed_data(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
 
 static void ax_close_handles_and_stop()
 {
+    uv_close((uv_handle_t *)&stop_async, NULL);
+    uv_close((uv_handle_t *)&send_video_async, NULL);
+
     uv_timer_stop(&repeatTimer);
     uv_close((uv_handle_t *)&tcpClientSocket, NULL);
 
