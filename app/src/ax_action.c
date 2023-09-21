@@ -619,6 +619,8 @@ static void ax_close_handles_and_stop()
     uv_close((uv_handle_t *)&send_video_async, NULL);
 
     uv_timer_stop(&repeatTimer);
+    uv_close((uv_handle_t *)&repeatTimer, NULL);
+    
     uv_close((uv_handle_t *)&tcpClientSocket, NULL);
 
     uv_stop(&axUVLoop);
