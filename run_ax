@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-./run build_ax_debug --no-audio --max-fps=30 --turn-screen-off --verbosity=verbose --serial=xxx 
+./run xx_build_dev --no-audio --max-fps=30 --turn-screen-off --verbosity=verbose --serial=xxx 
