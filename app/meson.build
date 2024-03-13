@@ -22,8 +22,8 @@ src = [
     'src/fps_counter.c',
     'src/frame_buffer.c',
     'src/input_manager.c',
-    'src/keyboard_inject.c',
-    'src/mouse_inject.c',
+    'src/keyboard_sdk.c',
+    'src/mouse_sdk.c',
     'src/opengl.c',
     'src/options.c',
     'src/packet_merger.c',
@@ -33,11 +33,16 @@ src = [
     'src/screen.c',
     'src/server.c',
     'src/version.c',
+    'src/hid/hid_keyboard.c',
+    'src/hid/hid_mouse.c',
     'src/trait/frame_source.c',
     'src/trait/packet_source.c',
+    'src/uhid/keyboard_uhid.c',
+    'src/uhid/mouse_uhid.c',
+    'src/uhid/uhid_output.c',
     'src/util/acksync.c',
+    'src/util/audiobuf.c',
     'src/util/average.c',
-    'src/util/bytebuf.c',
     'src/util/file.c',
     'src/util/intmap.c',
     'src/util/intr.c',
@@ -90,8 +95,8 @@ usb_support = get_option('usb')
 if usb_support
     src += [
         'src/usb/aoa_hid.c',
-        'src/usb/hid_keyboard.c',
-        'src/usb/hid_mouse.c',
+        'src/usb/keyboard_aoa.c',
+        'src/usb/mouse_aoa.c',
         'src/usb/scrcpy_otg.c',
         'src/usb/screen_otg.c',
         'src/usb/usb.c',
@@ -100,77 +105,24 @@ endif
 
 cc = meson.get_compiler('c')
 
-crossbuild_windows = meson.is_cross_build() and host_machine.system() == 'windows'
+dependencies = [
+    dependency('libavformat', version: '>= 57.33'),
+    dependency('libavcodec', version: '>= 57.37'),
+    dependency('libavutil'),
+    dependency('libswresample'),
+    dependency('sdl2', version: '>= 2.0.5'),
+]
 
-if not crossbuild_windows
+if v4l2_support
+    dependencies += dependency('libavdevice')
+endif
 
-    # native build
-    dependencies = [
-        dependency('libavformat', version: '>= 57.33'),
-        dependency('libavcodec', version: '>= 57.37'),
-        dependency('libavutil'),
-        dependency('libswresample'),
-        dependency('sdl2', version: '>= 2.0.5'),
-    ]
-
-    if v4l2_support
-        dependencies += dependency('libavdevice')
-    endif
-
-    if usb_support
-        dependencies += dependency('libusb-1.0')
-    endif
-
-else
-    # cross-compile mingw32 build (from Linux to Windows)
-    prebuilt_sdl2 = meson.get_cross_property('prebuilt_sdl2')
-    sdl2_bin_dir = meson.current_source_dir() + '/prebuilt-deps/data/' + prebuilt_sdl2 + '/bin'
-    sdl2_lib_dir = meson.current_source_dir() + '/prebuilt-deps/data/' + prebuilt_sdl2 + '/lib'
-    sdl2_include_dir = 'prebuilt-deps/data/' + prebuilt_sdl2 + '/include'
-
-    sdl2 = declare_dependency(
-        dependencies: [
-            cc.find_library('SDL2', dirs: sdl2_bin_dir),
-            cc.find_library('SDL2main', dirs: sdl2_lib_dir),
-        ],
-        include_directories: include_directories(sdl2_include_dir)
-    )
-
-    prebuilt_ffmpeg = meson.get_cross_property('prebuilt_ffmpeg')
-    ffmpeg_bin_dir = meson.current_source_dir() + '/prebuilt-deps/data/' + prebuilt_ffmpeg + '/bin'
-    ffmpeg_include_dir = 'prebuilt-deps/data/' + prebuilt_ffmpeg + '/include'
-
-    ffmpeg = declare_dependency(
-        dependencies: [
-            cc.find_library('avcodec-60', dirs: ffmpeg_bin_dir),
-            cc.find_library('avformat-60', dirs: ffmpeg_bin_dir),
-            cc.find_library('avutil-58', dirs: ffmpeg_bin_dir),
-            cc.find_library('swresample-4', dirs: ffmpeg_bin_dir),
-        ],
-        include_directories: include_directories(ffmpeg_include_dir)
-    )
-
-    prebuilt_libusb = meson.get_cross_property('prebuilt_libusb')
-    libusb_bin_dir = meson.current_source_dir() + '/prebuilt-deps/data/' + prebuilt_libusb + '/bin'
-    libusb_include_dir = 'prebuilt-deps/data/' + prebuilt_libusb + '/include'
-
-    libusb = declare_dependency(
-        dependencies: [
-            cc.find_library('msys-usb-1.0', dirs: libusb_bin_dir),
-        ],
-        include_directories: include_directories(libusb_include_dir)
-    )
-
-    dependencies = [
-        ffmpeg,
-        sdl2,
-        libusb,
-        cc.find_library('mingw32')
-    ]
-
+if usb_support
+    dependencies += dependency('libusb-1.0')
 endif
 
 if host_machine.system() == 'windows'
+    dependencies += cc.find_library('mingw32')
     dependencies += cc.find_library('ws2_32')
 endif
 
@@ -269,9 +221,10 @@ if get_option('buildtype') == 'debug'
         ['test_binary', [
             'tests/test_binary.c',
         ]],
-        ['test_bytebuf', [
-            'tests/test_bytebuf.c',
-            'src/util/bytebuf.c',
+        ['test_audiobuf', [
+            'tests/test_audiobuf.c',
+            'src/util/audiobuf.c',
+            'src/util/memory.c',
         ]],
         ['test_cli', [
             'tests/test_cli.c',
@@ -292,6 +245,10 @@ if get_option('buildtype') == 'debug'
         ['test_device_msg_deserialize', [
             'tests/test_device_msg_deserialize.c',
             'src/device_msg.c',
+        ]],
+        ['test_orientation', [
+            'tests/test_orientation.c',
+            'src/options.c',
         ]],
         ['test_strbuf', [
             'tests/test_strbuf.c',

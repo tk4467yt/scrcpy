@@ -7,5 +7,5 @@ build/
 .gradle/
 /x/
 local.properties
-
 .vscode
+/scrcpy-server

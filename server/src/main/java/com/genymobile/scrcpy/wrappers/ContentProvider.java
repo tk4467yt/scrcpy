@@ -11,10 +11,9 @@ import android.os.Bundle;
 import android.os.IBinder;
 
 import java.io.Closeable;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
-public class ContentProvider implements Closeable {
+public final class ContentProvider implements Closeable {
 
     public static final String TABLE_SYSTEM = "system";
     public static final String TABLE_SECURE = "secure";
@@ -41,8 +40,6 @@ public class ContentProvider implements Closeable {
 
     private Method callMethod;
     private int callMethodVersion;
-
-    private Object attributionSource;
 
     ContentProvider(ActivityManager manager, Object provider, String name, IBinder token) {
         this.manager = manager;
@@ -77,8 +74,7 @@ public class ContentProvider implements Closeable {
         return callMethod;
     }
 
-    private Bundle call(String callMethod, String arg, Bundle extras)
-            throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
+    private Bundle call(String callMethod, String arg, Bundle extras) throws ReflectiveOperationException {
         try {
             Method method = getCallMethod();
             Object[] args;
@@ -99,7 +95,7 @@ public class ContentProvider implements Closeable {
                 }
             }
             return (Bundle) method.invoke(provider, args);
-        } catch (InvocationTargetException | IllegalAccessException | NoSuchMethodException e) {
+        } catch (ReflectiveOperationException e) {
             Ln.e("Could not invoke method", e);
             throw e;
         }
