@@ -11,9 +11,10 @@
 #include "opengl.h"
 #include "options.h"
 
-#ifdef __APPLE__
-# define SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
-#endif
+// quit with crash if SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE set
+// #ifdef __APPLE__
+// # define SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
+// #endif
 
 struct sc_display {
     SDL_Renderer *renderer;
