@@ -28,14 +28,21 @@ To disable only the audio playback, see [no playback](video.md#no-playback).
 
 ## Audio only
 
-To play audio only, disable the video:
+To play audio only, disable video and control:
 
 ```bash
-scrcpy --no-video
+scrcpy --no-video --no-control
+```
+
+To play audio without a window:
+
+```bash
+# --no-video and --no-control are implied by --no-window
+scrcpy --no-window
 # interrupt with Ctrl+C
 ```
 
-Without video, the audio latency is typically not criticial, so it might be
+Without video, the audio latency is typically not critical, so it might be
 interesting to add [buffering](#buffering) to minimize glitches:
 
 ```
