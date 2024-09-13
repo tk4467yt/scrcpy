@@ -524,7 +524,7 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
                         },
                         .action = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_ACTION_DOWN : SC_ACTION_UP,
                         .button = SC_MOUSE_BUTTON_LEFT,
-                        .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
+                        .pointer_id = ax_sc_im->vfinger_down ? SC_POINTER_ID_GENERIC_FINGER : SC_POINTER_ID_MOUSE,
                         .buttons_state = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_MOUSE_BUTTON_LEFT : 0,
                     };
                     ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
@@ -534,7 +534,7 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
                             .screen_size = ax_sc_im->screen->frame_size,
                             .point = touchPoint,
                         },
-                        .pointer_id = ax_sc_im->forward_all_clicks ? POINTER_ID_MOUSE : POINTER_ID_GENERIC_FINGER,
+                        .pointer_id = ax_sc_im->vfinger_down ? SC_POINTER_ID_GENERIC_FINGER : SC_POINTER_ID_MOUSE,
                         .xrel = 0,
                         .yrel = 0,
                         .buttons_state = SC_MOUSE_BUTTON_LEFT,
