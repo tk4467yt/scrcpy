@@ -2,8 +2,8 @@
 //
 //
 
-#ifndef AX_ACTION_H
-#define AX_ACTION_H
+#ifndef AP_ACTION_H
+#define AP_ACTION_H
 
 #include "input_manager.h"
 
@@ -21,4 +21,4 @@ void sendBeginVideoPacket(void);
 
 void auto_scroll_handle_4_left(void);
 
-#endif // end AX_ACTION_H
+#endif // end AP_ACTION_H

@@ -14,49 +14,10 @@
 // so declare uv.h after scrcpy's header
 #include <uv.h>
 
-#include "ax_action.h"
+#include "ap_action.h"
+#include "ap_defines.h"
+#include "ap_packet.h"
 #include "cJSON.h"
-
-// packets define
-#define AX_JSON_COMMAND_SET_CLIENT_INFO "set_client_info" // set client info (client ==>> server)
-#define AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO "client_begin_video" // client begin transfer video AVPacket from next packet (client ==>> server)
-
-#define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
-#define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
-
-#define AX_JSON_COMMAND_CMD_RESPONSE "cmd_response" // response to received command (client <<==>> server)
-
-#define AX_JSON_CONTENT_KEY_COMMAND "command"
-#define AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND "response_2_command"
-#define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
-#define AX_JSON_CONTENT_KEY_CONTENT "content"
-#define AX_JSON_CONTENT_KEY_ERR_CODE "err_code"
-
-#define AX_SCROLL_DIRECTION_UP "up"
-#define AX_SCROLL_DIRECTION_DOWN "down"
-#define AX_SCROLL_DIRECTION_LEFT "left"
-#define AX_SCROLL_DIRECTION_RIGHT "right"
-
-#define AX_ERR_CODE_SUCCESS 0
-#define AX_ERR_CODE_FAILED 1
-
-#define AX_JSON_KEY_CLIENT_ID "client_id"
-#define AX_JSON_KEY_SCREEN_WIDTH "screen_width"
-#define AX_JSON_KEY_SCREEN_HEIGHT "screen_height"
-#define AX_JSON_KEY_AV_VIDEO_CODEC_ID "av_video_codec_id"
-
-#define AX_PACKET_HEADER_LEN 4
-
-#define AX_STREAM_CONTENT_TYPE_RAW_VIDEO 1
-#define AX_STREAM_CONTENT_TYPE_JSON 2
-
-// libuv relate
-#define AX_SERIAL_MAX_LEN 128
-
-#define AX_SERVER_ADDR "127.0.0.1"
-#define AX_SERVER_PORT 10748
-
-#define AX_REPEAT_TIMER_REPEAT_VAL 20 // ms
 
 static sc_mutex ax_mutex;
 
@@ -120,33 +81,6 @@ static void add_ax_delayed_action(struct ax_delayed_action touchAction)
 }
 
 // packets utility
-static char * makeAXPacket(char *packet_buf, char *cmd_str)
-{
-    size_t cmd_len = strlen(cmd_str);
-    size_t packet_len = cmd_len + AX_PACKET_HEADER_LEN;
-
-    packet_buf[0] = (packet_len >> 8) & 0xff;
-    packet_buf[1] = packet_len & 0xff;
-    packet_buf[2] = AX_PACKET_HEADER_LEN;
-    packet_buf[3] = AX_STREAM_CONTENT_TYPE_JSON;
-
-    memcpy(packet_buf + AX_PACKET_HEADER_LEN, cmd_str, cmd_len);
-
-    return packet_buf;
-}
-
-static char * makeNextUVUniqueID()
-{
-    static char unique_id_buf[100];
-    static int lastUVUniqueID = 0;
-    
-    ++lastUVUniqueID;
-
-    SDL_itoa(lastUVUniqueID, unique_id_buf, 10);
-
-    return unique_id_buf;
-}
-
 static char * makeAXCommand(char *cmd, char *content)
 {
     cJSON *cmdJson = cJSON_CreateObject();
@@ -436,8 +370,8 @@ static void sendAXCommand(char *cmd_str)
     uv_buf_t writer_buf;
     on_require_alloc_buf(NULL, 0, &writer_buf);
 
-    makeAXPacket(writer_buf.base, cmd_str);
-    writer_buf.len = strlen(cmd_str) + AX_PACKET_HEADER_LEN;
+    makeAPPacket(writer_buf.base, cmd_str);
+    writer_buf.len = strlen(cmd_str) + apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_JSON);
 
     ax_writer->data = (void *)writer_buf.base;
 
@@ -555,19 +489,19 @@ static int handle_received_data(const uv_buf_t buf)
     int retVal = add_to_readed_buf(buf);
 
     if (SCRCPY_EXIT_SUCCESS == retVal) {
-        while (readed_buf_used_size >= AX_PACKET_HEADER_LEN) {
+        size_t headerLen = apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_JSON);
+
+        while (readed_buf_used_size >= headerLen) {
             uint8_t ub0 = ax_readed_buf[0];
             uint8_t ub1 = ax_readed_buf[1];
             uint8_t ub2 = ax_readed_buf[2];
             uint8_t ub3 = ax_readed_buf[3];
 
-            size_t packet_len = ub0 * 256 + ub1;
-            size_t header_len = ub2;
-            int content_type = ub3;
+            size_t packet_len = (ub0 << 24) + (ub1 << 16) + (ub2 << 8) + ub3;
+            int content_type = ax_readed_buf[4];
 
-            if (packet_len < AX_PACKET_HEADER_LEN || 
-                header_len != AX_PACKET_HEADER_LEN || 
-                content_type != AX_STREAM_CONTENT_TYPE_JSON) {
+            if (packet_len < headerLen ||
+                content_type != AP_STREAM_CONTENT_TYPE_JSON) {
                 retVal = SCRCPY_EXIT_FAILURE;
                 LOGE("AX invalid packet header");
                 break;
@@ -577,7 +511,7 @@ static int handle_received_data(const uv_buf_t buf)
                 LOGI("AX no enough packet data");
                 break;
             } else {
-                handle_ax_json_cmd(uv_buf_init(ax_readed_buf + AX_PACKET_HEADER_LEN, packet_len - AX_PACKET_HEADER_LEN));
+                handle_ax_json_cmd(uv_buf_init(ax_readed_buf + headerLen, packet_len - headerLen));
 
                 retVal = remove_readed_buf_head(packet_len);
             }
@@ -807,22 +741,24 @@ static void ax_inner_send_avPacket(AVPacket *packet)
         ax_sending_video_packet_buf[1] = (totalSize >> 16) & 0xff;
         ax_sending_video_packet_buf[2] = (totalSize >> 8) & 0xff;
         ax_sending_video_packet_buf[3] = totalSize & 0xff;
+        // type
+        ax_sending_video_packet_buf[4] = AP_STREAM_CONTENT_TYPE_RAW_VIDEO;
         //pts
         int64_t pts = packet->pts;
-        ax_sending_video_packet_buf[4] = (pts >> 56) & 0xff;
-        ax_sending_video_packet_buf[5] = (pts >> 48) & 0xff;
-        ax_sending_video_packet_buf[6] = (pts >> 40) & 0xff;
-        ax_sending_video_packet_buf[7] = (pts >> 32) & 0xff;
-        ax_sending_video_packet_buf[8] = (pts >> 24) & 0xff;
-        ax_sending_video_packet_buf[9] = (pts >> 16) & 0xff;
-        ax_sending_video_packet_buf[10] = (pts >> 8) & 0xff;
-        ax_sending_video_packet_buf[11] = pts & 0xff;
+        ax_sending_video_packet_buf[5] = (pts >> 56) & 0xff;
+        ax_sending_video_packet_buf[6] = (pts >> 48) & 0xff;
+        ax_sending_video_packet_buf[7] = (pts >> 40) & 0xff;
+        ax_sending_video_packet_buf[8] = (pts >> 32) & 0xff;
+        ax_sending_video_packet_buf[9] = (pts >> 24) & 0xff;
+        ax_sending_video_packet_buf[10] = (pts >> 16) & 0xff;
+        ax_sending_video_packet_buf[11] = (pts >> 8) & 0xff;
+        ax_sending_video_packet_buf[12] = pts & 0xff;
         //flag
         int flags = packet->flags;
-        ax_sending_video_packet_buf[12] = (flags >> 24) & 0xff;
-        ax_sending_video_packet_buf[13] = (flags >> 16) & 0xff;
-        ax_sending_video_packet_buf[14] = (flags >> 8) & 0xff;
-        ax_sending_video_packet_buf[15] = flags & 0xff;
+        ax_sending_video_packet_buf[13] = (flags >> 24) & 0xff;
+        ax_sending_video_packet_buf[14] = (flags >> 16) & 0xff;
+        ax_sending_video_packet_buf[15] = (flags >> 8) & 0xff;
+        ax_sending_video_packet_buf[16] = flags & 0xff;
 
         memcpy(ax_sending_video_packet_buf+headerSize, packet->data, pktSize);
         ax_sending_video_packet_length = totalSize;

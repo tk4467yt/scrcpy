@@ -1,6 +1,7 @@
 src = [
     'src/main.c',
-    'src/ax_action.c',
+    'src/ap_packet.c',
+    'src/ap_action.c',
     'src/cJSON.c',
     'src/adb/adb.c',
     'src/adb/adb_device.c',
