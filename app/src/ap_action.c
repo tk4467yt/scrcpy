@@ -794,8 +794,8 @@ static void ax_inner_send_avPacket(AVPacket *packet)
     }
 
     int pktSize = packet->size;
-    int headerSize = 16;
-    int totalSize = pktSize + headerSize;
+    int headerSize = apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_RAW_VIDEO);
+    int totalSize = headerSize + pktSize;
     // video packet prefix with 4bytes length header
     if (totalSize > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN)
     {
