@@ -42,9 +42,7 @@ static int sc_screen_width = 0;
 static int sc_screen_height = 0;
 static uint32_t av_video_codec_id = 0;
 
-#define AX_BUF_SIZE 4096
-static char ax_content_buf[AX_BUF_SIZE];
-static char ax_cmd_buf[AX_BUF_SIZE];
+static char ax_print_log_buf[AX_BUF_SIZE];
 
 #define AX_READED_BUF_SIZE 8192
 static char ax_readed_buf[AX_READED_BUF_SIZE];
@@ -52,7 +50,6 @@ static size_t readed_buf_used_size = 0;
 
 static bool client_should_send_video = false;
 
-#define AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN (10 * 1024 * 1024) // 10M
 static uint8_t ax_sending_video_packet_buf[AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN];
 static int ax_sending_video_packet_length = 0;
 
@@ -84,49 +81,6 @@ static void add_ax_delayed_action(struct ax_delayed_action touchAction)
 }
 
 // packets utility
-static char *makeAXCommand(char *cmd, char *content)
-{
-    cJSON *cmdJson = cJSON_CreateObject();
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_COMMAND, cmd);
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, makeNextUVUniqueID());
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_CONTENT, content);
-
-    cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
-
-    cJSON_Delete(cmdJson);
-
-    return ax_cmd_buf;
-}
-
-static char *makeSetClientInfoJson(char *clientID, int screen_width, int screen_height)
-{
-    cJSON *contentJson = cJSON_CreateObject();
-    cJSON_AddStringToObject(contentJson, AX_JSON_KEY_CLIENT_ID, clientID);
-    cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_SCREEN_WIDTH, screen_width);
-    cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_SCREEN_HEIGHT, screen_height);
-
-    cJSON_PrintPreallocated(contentJson, ax_content_buf, AX_BUF_SIZE, false);
-
-    cJSON_Delete(contentJson);
-
-    char *cmd_str = makeAXCommand(AX_JSON_COMMAND_SET_CLIENT_INFO, ax_content_buf);
-
-    return cmd_str;
-}
-
-static char *makeBeginVideoModeJson()
-{
-    cJSON *contentJson = cJSON_CreateObject();
-    cJSON_AddNumberToObject(contentJson, AX_JSON_KEY_AV_VIDEO_CODEC_ID, av_video_codec_id);
-
-    cJSON_PrintPreallocated(contentJson, ax_content_buf, AX_BUF_SIZE, false);
-
-    cJSON_Delete(contentJson);
-
-    char *cmd_str = makeAXCommand(AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO, ax_content_buf);
-
-    return cmd_str;
-}
 
 static int add_to_readed_buf(const uv_buf_t buf)
 {
@@ -305,9 +259,9 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
 
     if (sc_get_log_level() == SC_LOG_LEVEL_VERBOSE || sc_get_log_level() == SC_LOG_LEVEL_DEBUG)
     {
-        cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
+        cJSON_PrintPreallocated(cmdJson, ax_print_log_buf, AX_BUF_SIZE, false);
 
-        LOGD("ax received: %s", ax_cmd_buf);
+        LOGD("ax received: %s", ax_print_log_buf);
     }
 
     char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
@@ -435,7 +389,7 @@ static void check_report_client_info()
 
 void sendBeginVideoPacket()
 {
-    char *cmd_str = makeBeginVideoModeJson();
+    char *cmd_str = makeBeginVideoModeJson(av_video_codec_id);
 
     sendAXCommand(cmd_str);
 }
@@ -793,46 +747,15 @@ static void ax_inner_send_avPacket(AVPacket *packet)
         can_send = false;
     }
 
-    int pktSize = packet->size;
-    int headerSize = apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_RAW_VIDEO);
-    int totalSize = headerSize + pktSize;
-    // video packet prefix with 4bytes length header
-    if (totalSize > AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN)
-    {
-        LOGE("AX video too long: %d", totalSize);
-        can_send = false;
-    }
-
     if (can_send)
     {
-        // total size
-        ax_sending_video_packet_buf[0] = (totalSize >> 24) & 0xff;
-        ax_sending_video_packet_buf[1] = (totalSize >> 16) & 0xff;
-        ax_sending_video_packet_buf[2] = (totalSize >> 8) & 0xff;
-        ax_sending_video_packet_buf[3] = totalSize & 0xff;
-        // type
-        ax_sending_video_packet_buf[4] = AP_STREAM_CONTENT_TYPE_RAW_VIDEO;
-        // pts
-        int64_t pts = packet->pts;
-        ax_sending_video_packet_buf[5] = (pts >> 56) & 0xff;
-        ax_sending_video_packet_buf[6] = (pts >> 48) & 0xff;
-        ax_sending_video_packet_buf[7] = (pts >> 40) & 0xff;
-        ax_sending_video_packet_buf[8] = (pts >> 32) & 0xff;
-        ax_sending_video_packet_buf[9] = (pts >> 24) & 0xff;
-        ax_sending_video_packet_buf[10] = (pts >> 16) & 0xff;
-        ax_sending_video_packet_buf[11] = (pts >> 8) & 0xff;
-        ax_sending_video_packet_buf[12] = pts & 0xff;
-        // flag
-        int flags = packet->flags;
-        ax_sending_video_packet_buf[13] = (flags >> 24) & 0xff;
-        ax_sending_video_packet_buf[14] = (flags >> 16) & 0xff;
-        ax_sending_video_packet_buf[15] = (flags >> 8) & 0xff;
-        ax_sending_video_packet_buf[16] = flags & 0xff;
+        int makedSize = makeAPVideoPacket(packet, ax_sending_video_packet_buf);
+        if (makedSize > 0)
+        {
+            ax_sending_video_packet_length = makedSize;
 
-        memcpy(ax_sending_video_packet_buf + headerSize, packet->data, pktSize);
-        ax_sending_video_packet_length = totalSize;
-
-        uv_async_send(&send_video_async);
+            uv_async_send(&send_video_async);
+        }
     }
 
     sc_mutex_unlock(&ax_mutex);

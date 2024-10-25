@@ -42,4 +42,7 @@
 
 #define AX_REPEAT_TIMER_REPEAT_VAL 20 // ms
 
+#define AX_BUF_SIZE 4096
+#define AX_SEND_RAW_VIDEO_BUFFER_MAX_LEN (10 * 1024 * 1024) // 10M
+
 #endif // end AP_DEFINES_H
