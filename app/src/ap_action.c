@@ -302,9 +302,13 @@ void auto_scroll_handle_4_left()
 static void handle_ax_json_cmd(const uv_buf_t buf)
 {
     cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
-    cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
 
-    LOGD("ax received: %s", ax_cmd_buf);
+    if (sc_get_log_level() == SC_LOG_LEVEL_VERBOSE || sc_get_log_level() == SC_LOG_LEVEL_DEBUG)
+    {
+        cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
+
+        LOGD("ax received: %s", ax_cmd_buf);
+    }
 
     char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
     int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_ERR_CODE));
