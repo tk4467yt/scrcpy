@@ -9,4 +9,7 @@ char *makeAPPacket(char *out_buf, char *cmd_str);
 
 char *makeNextUVUniqueID(void);
 
+size_t getAPPacketLength(char *packet_buf);
+int getAPPacketContentType(char *packet_buf);
+
 #endif // end AP_PACKET_H
