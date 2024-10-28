@@ -11,7 +11,7 @@
 #define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
 #define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
 
-#define AX_JSON_COMMAND_CMD_RESPONSE "cmd_response" // response to received command (client <<==>> server)
+#define AX_JSON_COMMAND_RESPONSE "cmd_response" // response to received command (client <<==>> server)
 
 #define AX_JSON_CONTENT_KEY_COMMAND "command"
 #define AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND "response_2_command"

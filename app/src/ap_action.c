@@ -270,7 +270,7 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
     if (AX_ERR_CODE_SUCCESS == innerErrCode)
     {
         // LOGD("%s success", innerCmd);
-        if (strcmp(innerCmd, AX_JSON_COMMAND_CMD_RESPONSE) == 0)
+        if (strcmp(innerCmd, AX_JSON_COMMAND_RESPONSE) == 0)
         {
             // no handle response
             char *innerResponse2Cmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND));
