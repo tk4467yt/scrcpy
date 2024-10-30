@@ -264,8 +264,8 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         LOGD("ax received: %s", ax_print_log_buf);
     }
 
-    char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_COMMAND));
-    int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_ERR_CODE));
+    char *innerCmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_KEY_COMMAND));
+    int innerErrCode = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(cmdJson, AX_JSON_KEY_ERR_CODE));
 
     if (AX_ERR_CODE_SUCCESS == innerErrCode)
     {
@@ -273,7 +273,7 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         if (strcmp(innerCmd, AX_JSON_COMMAND_RESPONSE) == 0)
         {
             // no handle response
-            char *innerResponse2Cmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND));
+            char *innerResponse2Cmd = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_KEY_RESPONSE_2_COMMAND));
             if (strcmp(innerResponse2Cmd, AX_JSON_COMMAND_CLIENT_BEGIN_VIDEO) == 0)
             {
                 struct ax_delayed_action tmpAction;
@@ -287,7 +287,7 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         {
             // origin at left-top
 
-            char *innerContent = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_CONTENT_KEY_CONTENT));
+            char *innerContent = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_KEY_CONTENT));
 
             if (strcmp(innerContent, AX_SCROLL_DIRECTION_UP) == 0)
             {

@@ -13,11 +13,11 @@
 
 #define AX_JSON_COMMAND_RESPONSE "cmd_response" // response to received command (client <<==>> server)
 
-#define AX_JSON_CONTENT_KEY_COMMAND "command"
-#define AX_JSON_CONTENT_KEY_RESPONSE_2_COMMAND "response_2_command"
-#define AX_JSON_CONTENT_KEY_UNIQUE_ID "unique_id"
-#define AX_JSON_CONTENT_KEY_CONTENT "content"
-#define AX_JSON_CONTENT_KEY_ERR_CODE "err_code"
+#define AX_JSON_KEY_COMMAND "command"
+#define AX_JSON_KEY_RESPONSE_2_COMMAND "response_2_command"
+#define AX_JSON_KEY_UNIQUE_ID "unique_id"
+#define AX_JSON_KEY_CONTENT "content"
+#define AX_JSON_KEY_ERR_CODE "err_code"
 
 #define AX_SCROLL_DIRECTION_UP "up"
 #define AX_SCROLL_DIRECTION_DOWN "down"
@@ -31,8 +31,6 @@
 #define AX_JSON_KEY_SCREEN_WIDTH "screen_width"
 #define AX_JSON_KEY_SCREEN_HEIGHT "screen_height"
 #define AX_JSON_KEY_AV_VIDEO_CODEC_ID "av_video_codec_id"
-
-#define AX_PACKET_HEADER_LEN 4
 
 // libuv relate
 #define AX_SERIAL_MAX_LEN 128

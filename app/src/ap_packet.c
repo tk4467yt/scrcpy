@@ -119,9 +119,9 @@ int getAPPacketContentType(char *packet_buf)
 char *makeAXCommand(char *cmd, char *content)
 {
     cJSON *cmdJson = cJSON_CreateObject();
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_COMMAND, cmd);
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_UNIQUE_ID, makeNextUVUniqueID());
-    cJSON_AddStringToObject(cmdJson, AX_JSON_CONTENT_KEY_CONTENT, content);
+    cJSON_AddStringToObject(cmdJson, AX_JSON_KEY_COMMAND, cmd);
+    cJSON_AddStringToObject(cmdJson, AX_JSON_KEY_UNIQUE_ID, makeNextUVUniqueID());
+    cJSON_AddStringToObject(cmdJson, AX_JSON_KEY_CONTENT, content);
 
     cJSON_PrintPreallocated(cmdJson, ax_cmd_buf, AX_BUF_SIZE, false);
 
