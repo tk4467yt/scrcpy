@@ -1,3 +1,3 @@
 #!/bin/bash
 
-meson setup --buildtype=debug -Dprebuilt_server=./scrcpy-server-v2.6.1 xx_build_dev
+meson setup --buildtype=debug -Dprebuilt_server=./scrcpy-server-v2.7 xx_build_dev
