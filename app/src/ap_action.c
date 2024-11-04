@@ -313,19 +313,14 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
             {
                 LOGI("click x= %i, y= %i", x, y);
 
-                // mouse down
-                struct sc_mouse_click_event clickEvt = {
-                    .position = {
-                        .screen_size = ax_sc_im->screen->frame_size,
-                        .point = {.x = x, .y = y},
-                    },
-                    .action = SC_ACTION_DOWN,
-                    .button = SC_MOUSE_BUTTON_LEFT,
-                    .pointer_id = SC_POINTER_ID_MOUSE,
-                    .buttons_state = SC_MOUSE_BUTTON_LEFT,
-                };
+                // delayed mouse down
+                struct ax_delayed_action downTouch;
+                downTouch.delayed_type = ax_delayed_type_touch_down;
+                downTouch.touch_x = x;
+                downTouch.touch_y = y;
+                downTouch.expire_count = 0;
 
-                ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
+                add_ax_delayed_action(downTouch);
 
                 // delayed mouse up
                 struct ax_delayed_action upTouch;
