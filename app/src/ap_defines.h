@@ -10,6 +10,7 @@
 
 #define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
 #define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
+#define JSON_COMMAND_CLICK "click"                               // let client click at position (server ==>> client)
 
 #define AX_JSON_COMMAND_RESPONSE "cmd_response" // response to received command (client <<==>> server)
 
@@ -31,6 +32,9 @@
 #define AX_JSON_KEY_SCREEN_WIDTH "screen_width"
 #define AX_JSON_KEY_SCREEN_HEIGHT "screen_height"
 #define AX_JSON_KEY_AV_VIDEO_CODEC_ID "av_video_codec_id"
+
+#define JSON_KEY_CLICK_X "x"
+#define JSON_KEY_CLICK_Y "y"
 
 // libuv relate
 #define AX_SERIAL_MAX_LEN 128

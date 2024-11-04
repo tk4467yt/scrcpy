@@ -302,6 +302,41 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
         {
             sendBeginVideoPacket();
         }
+        else if (strcmp(innerCmd, JSON_COMMAND_CLICK) == 0)
+        {
+            char *contentStr = cJSON_GetStringValue(cJSON_GetObjectItem(cmdJson, AX_JSON_KEY_CONTENT));
+            cJSON *contentJson = cJSON_Parse(contentStr);
+
+            int x = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(contentJson, JSON_KEY_CLICK_X));
+            int y = (int)cJSON_GetNumberValue(cJSON_GetObjectItem(contentJson, JSON_KEY_CLICK_Y));
+            if (x >= 0 && y >= 0)
+            {
+                LOGI("click x= %i, y= %i", x, y);
+
+                // mouse down
+                struct sc_mouse_click_event clickEvt = {
+                    .position = {
+                        .screen_size = ax_sc_im->screen->frame_size,
+                        .point = {.x = x, .y = y},
+                    },
+                    .action = SC_ACTION_DOWN,
+                    .button = SC_MOUSE_BUTTON_LEFT,
+                    .pointer_id = SC_POINTER_ID_MOUSE,
+                    .buttons_state = SC_MOUSE_BUTTON_LEFT,
+                };
+
+                ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
+
+                // delayed mouse up
+                struct ax_delayed_action upTouch;
+                upTouch.delayed_type = ax_delayed_type_touch_up;
+                upTouch.touch_x = x;
+                upTouch.touch_y = y;
+                upTouch.expire_count = 300 / AX_REPEAT_TIMER_REPEAT_VAL; // 300ms delayed
+
+                add_ax_delayed_action(upTouch);
+            }
+        }
     }
     else
     {
@@ -453,9 +488,9 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
                             .screen_size = ax_sc_im->screen->frame_size,
                             .point = touchPoint,
                         },
-                        .action = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_ACTION_DOWN : SC_ACTION_UP,
+                        .action = delayed_type == ax_delayed_type_touch_down ? SC_ACTION_DOWN : SC_ACTION_UP,
                         .button = SC_MOUSE_BUTTON_LEFT,
-                        .pointer_id = ax_sc_im->vfinger_down ? SC_POINTER_ID_GENERIC_FINGER : SC_POINTER_ID_MOUSE,
+                        .pointer_id = SC_POINTER_ID_MOUSE,
                         .buttons_state = handling_delayed_action.delayed_type == ax_delayed_type_touch_down ? SC_MOUSE_BUTTON_LEFT : 0,
                     };
                     ax_sc_im->mp->ops->process_mouse_click(ax_sc_im->mp, &clickEvt);
@@ -467,7 +502,7 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
                             .screen_size = ax_sc_im->screen->frame_size,
                             .point = touchPoint,
                         },
-                        .pointer_id = ax_sc_im->vfinger_down ? SC_POINTER_ID_GENERIC_FINGER : SC_POINTER_ID_MOUSE,
+                        .pointer_id = SC_POINTER_ID_MOUSE,
                         .xrel = 0,
                         .yrel = 0,
                         .buttons_state = SC_MOUSE_BUTTON_LEFT,
