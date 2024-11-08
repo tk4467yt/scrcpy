@@ -113,6 +113,11 @@ action_home(struct sc_input_manager *im, enum sc_action action) {
     send_keycode(im, AKEYCODE_HOME, action, "HOME");
 }
 
+void ax_action_tap_home(struct sc_input_manager *im, enum sc_action action)
+{
+    action_home(im, action);
+}
+
 static inline void
 action_back(struct sc_input_manager *im, enum sc_action action) {
     send_keycode(im, AKEYCODE_BACK, action, "BACK");

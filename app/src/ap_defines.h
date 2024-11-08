@@ -11,6 +11,7 @@
 #define AX_JSON_COMMAND_AUTO_SCROLL "auto_scroll" // let client auto scroll (server ==>> client)
 #define AX_JSON_COMMAND_SWITCH_TO_VIDEO_MODE "switch_to_video_mode" // let client switch to video mode (server ==>> client)
 #define JSON_COMMAND_CLICK "click"                               // let client click at position (server ==>> client)
+#define JSON_COMMAND_TAP_HOME "tap_home"                         // let client tap home key (server ==>> client)
 
 #define AX_JSON_COMMAND_RESPONSE "cmd_response" // response to received command (client <<==>> server)
 

@@ -58,6 +58,9 @@ static int ax_sending_video_packet_length = 0;
 #define ax_delayed_type_touch_move 2
 #define ax_delayed_type_set_video_mode 3
 
+#define ax_delayed_type_tap_home_down 4
+#define ax_delayed_type_tap_home_up 5
+
 struct ax_delayed_action
 {
     int delayed_type; // like ax_delayed_type_touch_down
@@ -332,6 +335,22 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
                 add_ax_delayed_action(upTouch);
             }
         }
+        else if (strcmp(innerCmd, JSON_COMMAND_TAP_HOME) == 0)
+        {
+            // delayed mouse down
+            struct ax_delayed_action downTouch;
+            downTouch.delayed_type = ax_delayed_type_tap_home_down;
+            downTouch.expire_count = 0;
+
+            add_ax_delayed_action(downTouch);
+
+            // delayed mouse up
+            struct ax_delayed_action upTouch;
+            upTouch.delayed_type = ax_delayed_type_tap_home_up;
+            upTouch.expire_count = 300 / AX_REPEAT_TIMER_REPEAT_VAL; // 300ms delayed
+
+            add_ax_delayed_action(upTouch);
+        }
     }
     else
     {
@@ -510,6 +529,14 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
             {
                 client_should_send_video = true;
                 LOGI("AX video state set");
+            }
+            else if (ax_delayed_type_tap_home_down == delayed_type)
+            {
+                ax_action_tap_home(ax_sc_im, SC_ACTION_DOWN);
+            }
+            else if (ax_delayed_type_tap_home_up == delayed_type)
+            {
+                ax_action_tap_home(ax_sc_im, SC_ACTION_UP);
             }
         }
     }

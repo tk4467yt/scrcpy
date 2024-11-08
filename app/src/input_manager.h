@@ -68,4 +68,6 @@ void
 sc_input_manager_handle_event(struct sc_input_manager *im,
                               const SDL_Event *event);
 
+void ax_action_tap_home(struct sc_input_manager *im, enum sc_action action);
+
 #endif
