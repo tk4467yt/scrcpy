@@ -2,6 +2,7 @@ _scrcpy() {
     local cur prev words cword
     local opts="
         --always-on-top
+        --angle
         --audio-bit-rate=
         --audio-buffer=
         --audio-codec=
@@ -17,10 +18,10 @@ _scrcpy() {
         --camera-fps=
         --camera-high-speed
         --camera-size=
+        --capture-orientation=
         --crop=
         -d --select-usb
         --disable-screensaver
-        --display-buffer=
         --display-id=
         --display-orientation=
         -e --select-tcpip
@@ -33,12 +34,11 @@ _scrcpy() {
         --keyboard=
         --kill-adb-on-close
         --legacy-paste
+        --list-apps
         --list-camera-sizes
         --list-cameras
         --list-displays
         --list-encoders
-        --lock-video-orientation
-        --lock-video-orientation=
         -m --max-size=
         -M
         --max-fps=
@@ -46,6 +46,8 @@ _scrcpy() {
         --mouse-bind=
         -n --no-control
         -N --no-playback
+        --new-display
+        --new-display=
         --no-audio
         --no-audio-playback
         --no-cleanup
@@ -55,6 +57,7 @@ _scrcpy() {
         --no-mipmaps
         --no-mouse-hover
         --no-power-on
+        --no-vd-system-decorations
         --no-video
         --no-video-playback
         --orientation=
@@ -75,7 +78,9 @@ _scrcpy() {
         --rotation=
         -s --serial=
         -S --turn-screen-off
+        --screen-off-timeout=
         --shortcut-mod=
+        --start-app=
         -t --show-touches
         --tcpip
         --tcpip=
@@ -86,6 +91,7 @@ _scrcpy() {
         --v4l2-sink=
         -v --version
         -V --verbosity=
+        --video-buffer=
         --video-codec=
         --video-codec-options=
         --video-encoder=
@@ -133,16 +139,16 @@ _scrcpy() {
             COMPREPLY=($(compgen -W 'disabled uhid aoa' -- "$cur"))
             return
             ;;
+        --capture-orientation)
+            COMPREPLY=($(compgen -W '0 90 180 270 flip0 flip90 flip180 flip270 @0 @90 @180 @270 @flip0 @flip90 @flip180 @flip270' -- "$cur"))
+            return
+            ;;
         --orientation|--display-orientation)
             COMPREPLY=($(compgen -W '0 90 180 270 flip0 flip90 flip180 flip270' -- "$cur"))
             return
             ;;
         --record-orientation)
             COMPREPLY=($(compgen -W '0 90 180 270' -- "$cur"))
-            return
-            ;;
-        --lock-video-orientation)
-            COMPREPLY=($(compgen -W 'unlocked initial 0 90 180 270' -- "$cur"))
             return
             ;;
         --pause-on-exit)
@@ -187,9 +193,9 @@ _scrcpy() {
         |--camera-size \
         |--crop \
         |--display-id \
-        |--display-buffer \
         |--max-fps \
         |-m|--max-size \
+        |--new-display \
         |-p|--port \
         |--push-target \
         |--rotation \
@@ -197,6 +203,7 @@ _scrcpy() {
         |--tunnel-port \
         |--v4l2-buffer \
         |--v4l2-sink \
+        |--video-buffer \
         |--video-codec-options \
         |--video-encoder \
         |--tcpip \

@@ -55,7 +55,7 @@ struct scrcpy {
     struct sc_decoder video_decoder;
     struct sc_decoder audio_decoder;
     struct sc_recorder recorder;
-    struct sc_delay_buffer display_buffer;
+    struct sc_delay_buffer video_buffer;
 #ifdef HAVE_V4L2
     struct sc_v4l2_sink v4l2_sink;
     struct sc_delay_buffer v4l2_buffer;
@@ -430,9 +430,13 @@ scrcpy(struct scrcpy_options *options) {
         .video_bit_rate = options->video_bit_rate,
         .audio_bit_rate = options->audio_bit_rate,
         .max_fps = options->max_fps,
-        .lock_video_orientation = options->lock_video_orientation,
+        .angle = options->angle,
+        .screen_off_timeout = options->screen_off_timeout,
+        .capture_orientation = options->capture_orientation,
+        .capture_orientation_lock = options->capture_orientation_lock,
         .control = options->control,
         .display_id = options->display_id,
+        .new_display = options->new_display,
         .video = options->video,
         .audio = options->audio,
         .audio_dup = options->audio_dup,
@@ -456,6 +460,7 @@ scrcpy(struct scrcpy_options *options) {
         .power_on = options->power_on,
         .kill_adb_on_close = options->kill_adb_on_close,
         .camera_high_speed = options->camera_high_speed,
+        .vd_system_decorations = options->vd_system_decorations,
         .list = options->list,
     };
 
@@ -816,11 +821,11 @@ aoa_complete:
 
         if (options->video_playback) {
             struct sc_frame_source *src = &s->video_decoder.frame_source;
-            if (options->display_buffer) {
-                sc_delay_buffer_init(&s->display_buffer,
-                                     options->display_buffer, true);
-                sc_frame_source_add_sink(src, &s->display_buffer.frame_sink);
-                src = &s->display_buffer.frame_source;
+            if (options->video_buffer) {
+                sc_delay_buffer_init(&s->video_buffer,
+                                     options->video_buffer, true);
+                sc_frame_source_add_sink(src, &s->video_buffer.frame_sink);
+                src = &s->video_buffer.frame_source;
             }
 
             sc_frame_source_add_sink(src, &s->screen.frame_sink);
@@ -876,11 +881,11 @@ aoa_complete:
     // everything is set up
     if (options->control && options->turn_screen_off) {
         struct sc_control_msg msg;
-        msg.type = SC_CONTROL_MSG_TYPE_SET_SCREEN_POWER_MODE;
-        msg.set_screen_power_mode.mode = SC_SCREEN_POWER_MODE_OFF;
+        msg.type = SC_CONTROL_MSG_TYPE_SET_DISPLAY_POWER;
+        msg.set_display_power.on = false;
 
         if (!sc_controller_push_msg(&s->controller, &msg)) {
-            LOGW("Could not request 'set screen power mode'");
+            LOGW("Could not request 'set display power'");
         }
     }
 
@@ -908,6 +913,25 @@ aoa_complete:
     if (options->control
             && options->gamepad_input_mode != SC_GAMEPAD_INPUT_MODE_DISABLED) {
         init_sdl_gamepads();
+    }
+
+    if (options->control && options->start_app) {
+        assert(controller);
+
+        char *name = strdup(options->start_app);
+        if (!name) {
+            LOG_OOM();
+            goto end;
+        }
+
+        struct sc_control_msg msg;
+        msg.type = SC_CONTROL_MSG_TYPE_START_APP;
+        msg.start_app.name = name;
+
+        if (!sc_controller_push_msg(controller, &msg)) {
+            LOGW("Could not request start app '%s'", name);
+            free(name);
+        }
     }
 
     ret = event_loop(s);

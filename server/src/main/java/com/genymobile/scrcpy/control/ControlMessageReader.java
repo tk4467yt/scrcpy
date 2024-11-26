@@ -1,7 +1,7 @@
 package com.genymobile.scrcpy.control;
 
-import com.genymobile.scrcpy.util.Binary;
 import com.genymobile.scrcpy.device.Position;
+import com.genymobile.scrcpy.util.Binary;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
@@ -39,13 +39,14 @@ public class ControlMessageReader {
                 return parseGetClipboard();
             case ControlMessage.TYPE_SET_CLIPBOARD:
                 return parseSetClipboard();
-            case ControlMessage.TYPE_SET_SCREEN_POWER_MODE:
-                return parseSetScreenPowerMode();
+            case ControlMessage.TYPE_SET_DISPLAY_POWER:
+                return parseSetDisplayPower();
             case ControlMessage.TYPE_EXPAND_NOTIFICATION_PANEL:
             case ControlMessage.TYPE_EXPAND_SETTINGS_PANEL:
             case ControlMessage.TYPE_COLLAPSE_PANELS:
             case ControlMessage.TYPE_ROTATE_DEVICE:
             case ControlMessage.TYPE_OPEN_HARD_KEYBOARD_SETTINGS:
+            case ControlMessage.TYPE_RESET_VIDEO:
                 return ControlMessage.createEmpty(type);
             case ControlMessage.TYPE_UHID_CREATE:
                 return parseUhidCreate();
@@ -53,6 +54,8 @@ public class ControlMessageReader {
                 return parseUhidInput();
             case ControlMessage.TYPE_UHID_DESTROY:
                 return parseUhidDestroy();
+            case ControlMessage.TYPE_START_APP:
+                return parseStartApp();
             default:
                 throw new ControlProtocolException("Unknown event type: " + type);
         }
@@ -132,9 +135,9 @@ public class ControlMessageReader {
         return ControlMessage.createSetClipboard(sequence, text, paste);
     }
 
-    private ControlMessage parseSetScreenPowerMode() throws IOException {
-        int mode = dis.readUnsignedByte();
-        return ControlMessage.createSetScreenPowerMode(mode);
+    private ControlMessage parseSetDisplayPower() throws IOException {
+        boolean on = dis.readBoolean();
+        return ControlMessage.createSetDisplayPower(on);
     }
 
     private ControlMessage parseUhidCreate() throws IOException {
@@ -153,6 +156,11 @@ public class ControlMessageReader {
     private ControlMessage parseUhidDestroy() throws IOException {
         int id = dis.readUnsignedShort();
         return ControlMessage.createUhidDestroy(id);
+    }
+
+    private ControlMessage parseStartApp() throws IOException {
+        String name = parseString(1);
+        return ControlMessage.createStartApp(name);
     }
 
     private Position parsePosition() throws IOException {

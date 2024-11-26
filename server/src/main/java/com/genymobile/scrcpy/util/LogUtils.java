@@ -1,19 +1,31 @@
 package com.genymobile.scrcpy.util;
 
+import com.genymobile.scrcpy.AndroidVersions;
+import com.genymobile.scrcpy.audio.AudioCodec;
+import com.genymobile.scrcpy.device.Device;
+import com.genymobile.scrcpy.device.DeviceApp;
 import com.genymobile.scrcpy.device.DisplayInfo;
 import com.genymobile.scrcpy.device.Size;
+import com.genymobile.scrcpy.video.VideoCodec;
 import com.genymobile.scrcpy.wrappers.DisplayManager;
 import com.genymobile.scrcpy.wrappers.ServiceManager;
 
+import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.graphics.Rect;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
+import android.os.Build;
 import android.util.Range;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -23,32 +35,54 @@ public final class LogUtils {
         // not instantiable
     }
 
-    public static String buildVideoEncoderListMessage() {
-        StringBuilder builder = new StringBuilder("List of video encoders:");
-        List<CodecUtils.DeviceEncoder> videoEncoders = CodecUtils.listVideoEncoders();
-        if (videoEncoders.isEmpty()) {
-            builder.append("\n    (none)");
-        } else {
-            for (CodecUtils.DeviceEncoder encoder : videoEncoders) {
-                builder.append("\n    --video-codec=").append(encoder.getCodec().getName());
-                builder.append(" --video-encoder='").append(encoder.getInfo().getName()).append("'");
+    private static String buildEncoderListMessage(String type, Codec[] codecs) {
+        StringBuilder builder = new StringBuilder("List of ").append(type).append(" encoders:");
+        MediaCodecList codecList = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
+        for (Codec codec : codecs) {
+            MediaCodecInfo[] encoders = CodecUtils.getEncoders(codecList, codec.getMimeType());
+            for (MediaCodecInfo info : encoders) {
+                int lineStart = builder.length();
+                builder.append("\n    --").append(type).append("-codec=").append(codec.getName());
+                builder.append(" --").append(type).append("-encoder=").append(info.getName());
+                if (Build.VERSION.SDK_INT >= AndroidVersions.API_29_ANDROID_10) {
+                    int lineLength = builder.length() - lineStart;
+                    final int column = 70;
+                    if (lineLength < column) {
+                        int padding = column - lineLength;
+                        builder.append(String.format("%" + padding + "s", " "));
+                    }
+                    builder.append(" (").append(getHwCodecType(info)).append(')');
+                    if (info.isVendor()) {
+                        builder.append(" [vendor]");
+                    }
+                    if (info.isAlias()) {
+                        builder.append(" (alias for ").append(info.getCanonicalName()).append(')');
+                    }
+                }
+
             }
         }
+
         return builder.toString();
     }
 
+    public static String buildVideoEncoderListMessage() {
+        return buildEncoderListMessage("video", VideoCodec.values());
+    }
+
     public static String buildAudioEncoderListMessage() {
-        StringBuilder builder = new StringBuilder("List of audio encoders:");
-        List<CodecUtils.DeviceEncoder> audioEncoders = CodecUtils.listAudioEncoders();
-        if (audioEncoders.isEmpty()) {
-            builder.append("\n    (none)");
-        } else {
-            for (CodecUtils.DeviceEncoder encoder : audioEncoders) {
-                builder.append("\n    --audio-codec=").append(encoder.getCodec().getName());
-                builder.append(" --audio-encoder='").append(encoder.getInfo().getName()).append("'");
-            }
+        return buildEncoderListMessage("audio", AudioCodec.values());
+    }
+
+    @TargetApi(AndroidVersions.API_29_ANDROID_10)
+    private static String getHwCodecType(MediaCodecInfo info) {
+        if (info.isSoftwareOnly()) {
+            return "sw";
         }
-        return builder.toString();
+        if (info.isHardwareAccelerated()) {
+            return "hw";
+        }
+        return "hybrid";
     }
 
     public static String buildDisplayListMessage() {
@@ -153,5 +187,58 @@ public final class LogUtils {
             set.add(range.getUpper());
         }
         return set;
+    }
+
+
+    public static String buildAppListMessage() {
+        List<DeviceApp> apps = Device.listApps();
+        return buildAppListMessage("List of apps:", apps);
+    }
+
+    @SuppressLint("QueryPermissionsNeeded")
+    public static String buildAppListMessage(String title, List<DeviceApp> apps) {
+        StringBuilder builder = new StringBuilder(title);
+
+        // Sort by:
+        //  1. system flag (system apps are before non-system apps)
+        //  2. name
+        //  3. package name
+        // Comparator.comparing() was introduced in API 24, so it cannot be used here to simplify the code
+        Collections.sort(apps, (thisApp, otherApp) -> {
+            // System apps first
+            int cmp = -Boolean.compare(thisApp.isSystem(), otherApp.isSystem());
+            if (cmp != 0) {
+                return cmp;
+            }
+
+            cmp = Objects.compare(thisApp.getName(), otherApp.getName(), String::compareTo);
+            if (cmp != 0) {
+                return cmp;
+            }
+
+            return Objects.compare(thisApp.getPackageName(), otherApp.getPackageName(), String::compareTo);
+        });
+
+        final int column = 30;
+        for (DeviceApp app : apps) {
+            String name = app.getName();
+            int padding = column - name.length();
+            builder.append("\n ");
+            if (app.isSystem()) {
+                builder.append("* ");
+            } else {
+                builder.append("- ");
+
+            }
+            builder.append(name);
+            if (padding > 0) {
+                builder.append(String.format("%" + padding + "s", " "));
+            } else {
+                builder.append("\n   ").append(String.format("%" + column + "s", " "));
+            }
+            builder.append(" ").append(app.getPackageName());
+        }
+
+        return builder.toString();
     }
 }

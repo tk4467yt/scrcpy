@@ -9,22 +9,21 @@ import com.genymobile.scrcpy.audio.AudioRawRecorder;
 import com.genymobile.scrcpy.audio.AudioSource;
 import com.genymobile.scrcpy.control.ControlChannel;
 import com.genymobile.scrcpy.control.Controller;
-import com.genymobile.scrcpy.control.DeviceMessage;
 import com.genymobile.scrcpy.device.ConfigurationException;
 import com.genymobile.scrcpy.device.DesktopConnection;
 import com.genymobile.scrcpy.device.Device;
+import com.genymobile.scrcpy.device.NewDisplay;
 import com.genymobile.scrcpy.device.Streamer;
+import com.genymobile.scrcpy.opengl.OpenGLRunner;
 import com.genymobile.scrcpy.util.Ln;
 import com.genymobile.scrcpy.util.LogUtils;
-import com.genymobile.scrcpy.util.Settings;
-import com.genymobile.scrcpy.util.SettingsException;
 import com.genymobile.scrcpy.video.CameraCapture;
+import com.genymobile.scrcpy.video.NewDisplayCapture;
 import com.genymobile.scrcpy.video.ScreenCapture;
 import com.genymobile.scrcpy.video.SurfaceCapture;
 import com.genymobile.scrcpy.video.SurfaceEncoder;
 import com.genymobile.scrcpy.video.VideoSource;
 
-import android.os.BatteryManager;
 import android.os.Build;
 
 import java.io.File;
@@ -75,63 +74,21 @@ public final class Server {
         // not instantiable
     }
 
-    private static void initAndCleanUp(Options options, CleanUp cleanUp) {
-        // This method is called from its own thread, so it may only configure cleanup actions which are NOT dynamic (i.e. they are configured once
-        // and for all, they cannot be changed from another thread)
-
-        if (options.getShowTouches()) {
-            try {
-                String oldValue = Settings.getAndPutValue(Settings.TABLE_SYSTEM, "show_touches", "1");
-                // If "show touches" was disabled, it must be disabled back on clean up
-                if (!"1".equals(oldValue)) {
-                    if (!cleanUp.setDisableShowTouches(true)) {
-                        Ln.e("Could not disable show touch on exit");
-                    }
-                }
-            } catch (SettingsException e) {
-                Ln.e("Could not change \"show_touches\"", e);
-            }
-        }
-
-        if (options.getStayAwake()) {
-            int stayOn = BatteryManager.BATTERY_PLUGGED_AC | BatteryManager.BATTERY_PLUGGED_USB | BatteryManager.BATTERY_PLUGGED_WIRELESS;
-            try {
-                String oldValue = Settings.getAndPutValue(Settings.TABLE_GLOBAL, "stay_on_while_plugged_in", String.valueOf(stayOn));
-                try {
-                    int restoreStayOn = Integer.parseInt(oldValue);
-                    if (restoreStayOn != stayOn) {
-                        // Restore only if the current value is different
-                        if (!cleanUp.setRestoreStayOn(restoreStayOn)) {
-                            Ln.e("Could not restore stay on on exit");
-                        }
-                    }
-                } catch (NumberFormatException e) {
-                    // ignore
-                }
-            } catch (SettingsException e) {
-                Ln.e("Could not change \"stay_on_while_plugged_in\"", e);
-            }
-        }
-
-        if (options.getPowerOffScreenOnClose()) {
-            if (!cleanUp.setPowerOffScreen(true)) {
-                Ln.e("Could not power off screen on exit");
-            }
-        }
-    }
-
     private static void scrcpy(Options options) throws IOException, ConfigurationException {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && options.getVideoSource() == VideoSource.CAMERA) {
+        if (Build.VERSION.SDK_INT < AndroidVersions.API_31_ANDROID_12 && options.getVideoSource() == VideoSource.CAMERA) {
             Ln.e("Camera mirroring is not supported before Android 12");
             throw new ConfigurationException("Camera mirroring is not supported");
         }
 
+        if (Build.VERSION.SDK_INT < AndroidVersions.API_29_ANDROID_10 && options.getNewDisplay() != null) {
+            Ln.e("New virtual display is not supported before Android 10");
+            throw new ConfigurationException("New virtual display is not supported");
+        }
+
         CleanUp cleanUp = null;
-        Thread initThread = null;
 
         if (options.getCleanup()) {
-            cleanUp = CleanUp.configure(options.getDisplayId());
-            initThread = startInitThread(options, cleanUp);
+            cleanUp = CleanUp.start(options);
         }
 
         int scid = options.getScid();
@@ -140,9 +97,6 @@ public final class Server {
         boolean video = options.getVideo();
         boolean audio = options.getAudio();
         boolean sendDummyByte = options.getSendDummyByte();
-        boolean camera = video && options.getVideoSource() == VideoSource.CAMERA;
-
-        final Device device = camera ? null : new Device(options);
 
         Workarounds.apply();
 
@@ -154,13 +108,11 @@ public final class Server {
                 connection.sendDeviceMeta(Device.getDeviceName());
             }
 
+            Controller controller = null;
+
             if (control) {
                 ControlChannel controlChannel = connection.getControlChannel();
-                Controller controller = new Controller(device, controlChannel, cleanUp, options.getClipboardAutosync(), options.getPowerOn());
-                device.setClipboardListener(text -> {
-                    DeviceMessage msg = DeviceMessage.createClipboard(text);
-                    controller.getSender().send(msg);
-                });
+                controller = new Controller(controlChannel, cleanUp, options);
                 asyncProcessors.add(controller);
             }
 
@@ -179,8 +131,7 @@ public final class Server {
                 if (audioCodec == AudioCodec.RAW) {
                     audioRecorder = new AudioRawRecorder(audioCapture, audioStreamer);
                 } else {
-                    audioRecorder = new AudioEncoder(audioCapture, audioStreamer, options.getAudioBitRate(), options.getAudioCodecOptions(),
-                            options.getAudioEncoder());
+                    audioRecorder = new AudioEncoder(audioCapture, audioStreamer, options);
                 }
                 asyncProcessors.add(audioRecorder);
             }
@@ -190,14 +141,22 @@ public final class Server {
                         options.getSendFrameMeta());
                 SurfaceCapture surfaceCapture;
                 if (options.getVideoSource() == VideoSource.DISPLAY) {
-                    surfaceCapture = new ScreenCapture(device);
+                    NewDisplay newDisplay = options.getNewDisplay();
+                    if (newDisplay != null) {
+                        surfaceCapture = new NewDisplayCapture(controller, options);
+                    } else {
+                        assert options.getDisplayId() != Device.DISPLAY_ID_NONE;
+                        surfaceCapture = new ScreenCapture(controller, options);
+                    }
                 } else {
-                    surfaceCapture = new CameraCapture(options.getCameraId(), options.getCameraFacing(), options.getCameraSize(),
-                            options.getMaxSize(), options.getCameraAspectRatio(), options.getCameraFps(), options.getCameraHighSpeed());
+                    surfaceCapture = new CameraCapture(options);
                 }
-                SurfaceEncoder surfaceEncoder = new SurfaceEncoder(surfaceCapture, videoStreamer, options.getVideoBitRate(), options.getMaxFps(),
-                        options.getVideoCodecOptions(), options.getVideoEncoder(), options.getDownsizeOnError());
+                SurfaceEncoder surfaceEncoder = new SurfaceEncoder(surfaceCapture, videoStreamer, options);
                 asyncProcessors.add(surfaceEncoder);
+
+                if (controller != null) {
+                    controller.setSurfaceCapture(surfaceCapture);
+                }
             }
 
             Completion completion = new Completion(asyncProcessors.size());
@@ -209,34 +168,31 @@ public final class Server {
 
             completion.await();
         } finally {
-            if (initThread != null) {
-                initThread.interrupt();
+            if (cleanUp != null) {
+                cleanUp.interrupt();
             }
             for (AsyncProcessor asyncProcessor : asyncProcessors) {
                 asyncProcessor.stop();
             }
 
+            OpenGLRunner.quit(); // quit the OpenGL thread, if any
+
             connection.shutdown();
 
             try {
-                if (initThread != null) {
-                    initThread.join();
+                if (cleanUp != null) {
+                    cleanUp.join();
                 }
                 for (AsyncProcessor asyncProcessor : asyncProcessors) {
                     asyncProcessor.join();
                 }
+                OpenGLRunner.join();
             } catch (InterruptedException e) {
                 // ignore
             }
 
             connection.close();
         }
-    }
-
-    private static Thread startInitThread(final Options options, final CleanUp cleanUp) {
-        Thread thread = new Thread(() -> initAndCleanUp(options, cleanUp), "init-cleanup");
-        thread.start();
-        return thread;
     }
 
     public static void main(String... args) {
@@ -281,6 +237,11 @@ public final class Server {
             if (options.getListCameras() || options.getListCameraSizes()) {
                 Workarounds.apply();
                 Ln.i(LogUtils.buildCameraListMessage(options.getListCameraSizes()));
+            }
+            if (options.getListApps()) {
+                Workarounds.apply();
+                Ln.i("Processing Android apps... (this may take some time)");
+                Ln.i(LogUtils.buildAppListMessage());
             }
             // Just print the requested data, do not mirror
             return;

@@ -1,15 +1,17 @@
 package com.genymobile.scrcpy.video;
 
+import com.genymobile.scrcpy.AndroidVersions;
 import com.genymobile.scrcpy.AsyncProcessor;
+import com.genymobile.scrcpy.Options;
+import com.genymobile.scrcpy.device.ConfigurationException;
+import com.genymobile.scrcpy.device.Size;
+import com.genymobile.scrcpy.device.Streamer;
 import com.genymobile.scrcpy.util.Codec;
 import com.genymobile.scrcpy.util.CodecOption;
 import com.genymobile.scrcpy.util.CodecUtils;
-import com.genymobile.scrcpy.device.ConfigurationException;
 import com.genymobile.scrcpy.util.IO;
 import com.genymobile.scrcpy.util.Ln;
 import com.genymobile.scrcpy.util.LogUtils;
-import com.genymobile.scrcpy.device.Size;
-import com.genymobile.scrcpy.device.Streamer;
 
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -48,15 +50,16 @@ public class SurfaceEncoder implements AsyncProcessor {
     private Thread thread;
     private final AtomicBoolean stopped = new AtomicBoolean();
 
-    public SurfaceEncoder(SurfaceCapture capture, Streamer streamer, int videoBitRate, float maxFps, List<CodecOption> codecOptions,
-            String encoderName, boolean downsizeOnError) {
+    private final CaptureReset reset = new CaptureReset();
+
+    public SurfaceEncoder(SurfaceCapture capture, Streamer streamer, Options options) {
         this.capture = capture;
         this.streamer = streamer;
-        this.videoBitRate = videoBitRate;
-        this.maxFps = maxFps;
-        this.codecOptions = codecOptions;
-        this.encoderName = encoderName;
-        this.downsizeOnError = downsizeOnError;
+        this.videoBitRate = options.getVideoBitRate();
+        this.maxFps = options.getMaxFps();
+        this.codecOptions = options.getVideoCodecOptions();
+        this.encoderName = options.getVideoEncoder();
+        this.downsizeOnError = options.getDownsizeOnError();
     }
 
     private void streamCapture() throws IOException, ConfigurationException {
@@ -64,38 +67,69 @@ public class SurfaceEncoder implements AsyncProcessor {
         MediaCodec mediaCodec = createMediaCodec(codec, encoderName);
         MediaFormat format = createFormat(codec.getMimeType(), videoBitRate, maxFps, codecOptions);
 
-        capture.init();
+        capture.init(reset);
 
         try {
-            streamer.writeVideoHeader(capture.getSize());
-
             boolean alive;
+            boolean headerWritten = false;
 
             do {
+                reset.consumeReset(); // If a capture reset was requested, it is implicitly fulfilled
+                capture.prepare();
                 Size size = capture.getSize();
+                if (!headerWritten) {
+                    streamer.writeVideoHeader(size);
+                    headerWritten = true;
+                }
+
                 format.setInteger(MediaFormat.KEY_WIDTH, size.getWidth());
                 format.setInteger(MediaFormat.KEY_HEIGHT, size.getHeight());
 
                 Surface surface = null;
+                boolean mediaCodecStarted = false;
+                boolean captureStarted = false;
                 try {
                     mediaCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
                     surface = mediaCodec.createInputSurface();
 
                     capture.start(surface);
+                    captureStarted = true;
 
                     mediaCodec.start();
+                    mediaCodecStarted = true;
 
-                    alive = encode(mediaCodec, streamer);
-                    // do not call stop() on exception, it would trigger an IllegalStateException
-                    mediaCodec.stop();
+                    // Set the MediaCodec instance to "interrupt" (by signaling an EOS) on reset
+                    reset.setRunningMediaCodec(mediaCodec);
+
+                    if (stopped.get()) {
+                        alive = false;
+                    } else {
+                        boolean resetRequested = reset.consumeReset();
+                        if (!resetRequested) {
+                            // If a reset is requested during encode(), it will interrupt the encoding by an EOS
+                            encode(mediaCodec, streamer);
+                        }
+                        // The capture might have been closed internally (for example if the camera is disconnected)
+                        alive = !stopped.get() && !capture.isClosed();
+                    }
                 } catch (IllegalStateException | IllegalArgumentException e) {
                     Ln.e("Encoding error: " + e.getClass().getName() + ": " + e.getMessage());
                     if (!prepareRetry(size)) {
                         throw e;
                     }
-                    Ln.i("Retrying...");
                     alive = true;
                 } finally {
+                    reset.setRunningMediaCodec(null);
+                    if (captureStarted) {
+                        capture.stop();
+                    }
+                    if (mediaCodecStarted) {
+                        try {
+                            mediaCodec.stop();
+                        } catch (IllegalStateException e) {
+                            // ignore (just in case)
+                        }
+                    }
                     mediaCodec.reset();
                     if (surface != null) {
                         surface.release();
@@ -156,25 +190,16 @@ public class SurfaceEncoder implements AsyncProcessor {
         return 0;
     }
 
-    private boolean encode(MediaCodec codec, Streamer streamer) throws IOException {
-        boolean eof = false;
-        boolean alive = true;
+    private void encode(MediaCodec codec, Streamer streamer) throws IOException {
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
 
-        while (!capture.consumeReset() && !eof) {
-            if (stopped.get()) {
-                alive = false;
-                break;
-            }
+        boolean eos;
+        do {
             int outputBufferId = codec.dequeueOutputBuffer(bufferInfo, -1);
             try {
-                if (capture.consumeReset()) {
-                    // must restart encoding with new size
-                    break;
-                }
-
-                eof = (bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
-                if (outputBufferId >= 0) {
+                eos = (bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
+                // On EOS, there might be data or not, depending on bufferInfo.size
+                if (outputBufferId >= 0 && bufferInfo.size > 0) {
                     ByteBuffer codecBuffer = codec.getOutputBuffer(outputBufferId);
 
                     boolean isConfig = (bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0;
@@ -191,21 +216,20 @@ public class SurfaceEncoder implements AsyncProcessor {
                     codec.releaseOutputBuffer(outputBufferId, false);
                 }
             }
-        }
-
-        if (capture.isClosed()) {
-            // The capture might have been closed internally (for example if the camera is disconnected)
-            alive = false;
-        }
-
-        return !eof && alive;
+        } while (!eos);
     }
 
     private static MediaCodec createMediaCodec(Codec codec, String encoderName) throws IOException, ConfigurationException {
         if (encoderName != null) {
             Ln.d("Creating encoder by name: '" + encoderName + "'");
             try {
-                return MediaCodec.createByCodecName(encoderName);
+                MediaCodec mediaCodec = MediaCodec.createByCodecName(encoderName);
+                String mimeType = Codec.getMimeType(mediaCodec);
+                if (!codec.getMimeType().equals(mimeType)) {
+                    Ln.e("Video encoder type for \"" + encoderName + "\" (" + mimeType + ") does not match codec type (" + codec.getMimeType() + ")");
+                    throw new ConfigurationException("Incorrect encoder type: " + encoderName);
+                }
+                return mediaCodec;
             } catch (IllegalArgumentException e) {
                 Ln.e("Video encoder '" + encoderName + "' for " + codec.getName() + " not found\n" + LogUtils.buildVideoEncoderListMessage());
                 throw new ConfigurationException("Unknown encoder: " + encoderName);
@@ -232,7 +256,7 @@ public class SurfaceEncoder implements AsyncProcessor {
         // must be present to configure the encoder, but does not impact the actual frame rate, which is variable
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 60);
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        if (Build.VERSION.SDK_INT >= AndroidVersions.API_24_ANDROID_7_0) {
             format.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED);
         }
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, DEFAULT_I_FRAME_INTERVAL);
@@ -285,6 +309,7 @@ public class SurfaceEncoder implements AsyncProcessor {
     public void stop() {
         if (thread != null) {
             stopped.set(true);
+            reset.reset();
         }
     }
 

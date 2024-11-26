@@ -1,10 +1,12 @@
 package com.genymobile.scrcpy.wrappers;
 
+import com.genymobile.scrcpy.AndroidVersions;
 import com.genymobile.scrcpy.util.Ln;
 
 import android.annotation.TargetApi;
 import android.os.IInterface;
 import android.view.IDisplayFoldListener;
+import android.view.IDisplayWindowListener;
 import android.view.IRotationWatcher;
 
 import java.lang.reflect.Method;
@@ -200,13 +202,48 @@ public final class WindowManager {
         }
     }
 
-    @TargetApi(29)
+    public void unregisterRotationWatcher(IRotationWatcher rotationWatcher) {
+        try {
+            manager.getClass().getMethod("removeRotationWatcher", IRotationWatcher.class).invoke(manager, rotationWatcher);
+        } catch (Exception e) {
+            Ln.e("Could not unregister rotation watcher", e);
+        }
+    }
+
+    @TargetApi(AndroidVersions.API_29_ANDROID_10)
     public void registerDisplayFoldListener(IDisplayFoldListener foldListener) {
         try {
-            Class<?> cls = manager.getClass();
-            cls.getMethod("registerDisplayFoldListener", IDisplayFoldListener.class).invoke(manager, foldListener);
+            manager.getClass().getMethod("registerDisplayFoldListener", IDisplayFoldListener.class).invoke(manager, foldListener);
         } catch (Exception e) {
             Ln.e("Could not register display fold listener", e);
+        }
+    }
+
+    @TargetApi(AndroidVersions.API_29_ANDROID_10)
+    public void unregisterDisplayFoldListener(IDisplayFoldListener foldListener) {
+        try {
+            manager.getClass().getMethod("unregisterDisplayFoldListener", IDisplayFoldListener.class).invoke(manager, foldListener);
+        } catch (Exception e) {
+            Ln.e("Could not unregister display fold listener", e);
+        }
+    }
+
+    @TargetApi(AndroidVersions.API_30_ANDROID_11)
+    public int[] registerDisplayWindowListener(IDisplayWindowListener listener) {
+        try {
+            return (int[]) manager.getClass().getMethod("registerDisplayWindowListener", IDisplayWindowListener.class).invoke(manager, listener);
+        } catch (Exception e) {
+            Ln.e("Could not register display window listener", e);
+        }
+        return null;
+    }
+
+    @TargetApi(AndroidVersions.API_30_ANDROID_11)
+    public void unregisterDisplayWindowListener(IDisplayWindowListener listener) {
+        try {
+            manager.getClass().getMethod("unregisterDisplayWindowListener", IDisplayWindowListener.class).invoke(manager, listener);
+        } catch (Exception e) {
+            Ln.e("Could not unregister display window listener", e);
         }
     }
 }

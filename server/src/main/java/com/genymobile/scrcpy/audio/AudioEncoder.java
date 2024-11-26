@@ -1,14 +1,16 @@
 package com.genymobile.scrcpy.audio;
 
+import com.genymobile.scrcpy.AndroidVersions;
 import com.genymobile.scrcpy.AsyncProcessor;
+import com.genymobile.scrcpy.Options;
+import com.genymobile.scrcpy.device.ConfigurationException;
+import com.genymobile.scrcpy.device.Streamer;
 import com.genymobile.scrcpy.util.Codec;
 import com.genymobile.scrcpy.util.CodecOption;
 import com.genymobile.scrcpy.util.CodecUtils;
-import com.genymobile.scrcpy.device.ConfigurationException;
 import com.genymobile.scrcpy.util.IO;
 import com.genymobile.scrcpy.util.Ln;
 import com.genymobile.scrcpy.util.LogUtils;
-import com.genymobile.scrcpy.device.Streamer;
 
 import android.annotation.TargetApi;
 import android.media.MediaCodec;
@@ -66,12 +68,12 @@ public final class AudioEncoder implements AsyncProcessor {
 
     private boolean ended;
 
-    public AudioEncoder(AudioCapture capture, Streamer streamer, int bitRate, List<CodecOption> codecOptions, String encoderName) {
+    public AudioEncoder(AudioCapture capture, Streamer streamer, Options options) {
         this.capture = capture;
         this.streamer = streamer;
-        this.bitRate = bitRate;
-        this.codecOptions = codecOptions;
-        this.encoderName = encoderName;
+        this.bitRate = options.getAudioBitRate();
+        this.codecOptions = options.getAudioCodecOptions();
+        this.encoderName = options.getAudioEncoder();
     }
 
     private static MediaFormat createFormat(String mimeType, int bitRate, List<CodecOption> codecOptions) {
@@ -93,7 +95,7 @@ public final class AudioEncoder implements AsyncProcessor {
         return format;
     }
 
-    @TargetApi(Build.VERSION_CODES.N)
+    @TargetApi(AndroidVersions.API_24_ANDROID_7_0)
     private void inputThread(MediaCodec mediaCodec, AudioCapture capture) throws IOException, InterruptedException {
         final MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
 
@@ -175,9 +177,9 @@ public final class AudioEncoder implements AsyncProcessor {
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.M)
+    @TargetApi(AndroidVersions.API_23_ANDROID_6_0)
     private void encode() throws IOException, ConfigurationException, AudioCaptureException {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT < AndroidVersions.API_30_ANDROID_11) {
             Ln.w("Audio disabled: it is not supported before Android 11");
             streamer.writeDisableStream(false);
             return;
@@ -287,7 +289,13 @@ public final class AudioEncoder implements AsyncProcessor {
         if (encoderName != null) {
             Ln.d("Creating audio encoder by name: '" + encoderName + "'");
             try {
-                return MediaCodec.createByCodecName(encoderName);
+                MediaCodec mediaCodec = MediaCodec.createByCodecName(encoderName);
+                String mimeType = Codec.getMimeType(mediaCodec);
+                if (!codec.getMimeType().equals(mimeType)) {
+                    Ln.e("Audio encoder type for \"" + encoderName + "\" (" + mimeType + ") does not match codec type (" + codec.getMimeType() + ")");
+                    throw new ConfigurationException("Incorrect encoder type: " + encoderName);
+                }
+                return mediaCodec;
             } catch (IllegalArgumentException e) {
                 Ln.e("Audio encoder '" + encoderName + "' for " + codec.getName() + " not found\n" + LogUtils.buildAudioEncoderListMessage());
                 throw new ConfigurationException("Unknown encoder: " + encoderName);
@@ -308,7 +316,7 @@ public final class AudioEncoder implements AsyncProcessor {
     }
 
     private final class EncoderCallback extends MediaCodec.Callback {
-        @TargetApi(Build.VERSION_CODES.N)
+        @TargetApi(AndroidVersions.API_24_ANDROID_7_0)
         @Override
         public void onInputBufferAvailable(MediaCodec codec, int index) {
             try {

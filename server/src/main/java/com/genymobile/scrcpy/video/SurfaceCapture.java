@@ -1,45 +1,54 @@
 package com.genymobile.scrcpy.video;
 
+import com.genymobile.scrcpy.device.ConfigurationException;
 import com.genymobile.scrcpy.device.Size;
 
 import android.view.Surface;
 
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A video source which can be rendered on a Surface for encoding.
  */
 public abstract class SurfaceCapture {
 
-    private final AtomicBoolean resetCapture = new AtomicBoolean();
+    public interface CaptureListener {
+        void onInvalidated();
+    }
+
+    private CaptureListener listener;
 
     /**
-     * Request the encoding session to be restarted, for example if the capture implementation detects that the video source size has changed (on
-     * device rotation for example).
+     * Notify the listener that the capture has been invalidated (for example, because its size changed).
      */
-    protected void requestReset() {
-        resetCapture.set(true);
+    protected void invalidate() {
+        listener.onInvalidated();
     }
 
     /**
-     * Consume the reset request (intended to be called by the encoder).
-     *
-     * @return {@code true} if a reset request was pending, {@code false} otherwise.
+     * Called once before the first capture starts.
      */
-    public boolean consumeReset() {
-        return resetCapture.getAndSet(false);
+    public final void init(CaptureListener listener) throws ConfigurationException, IOException {
+        this.listener = listener;
+        init();
     }
 
     /**
-     * Called once before the capture starts.
+     * Called once before the first capture starts.
      */
-    public abstract void init() throws IOException;
+    protected abstract void init() throws ConfigurationException, IOException;
 
     /**
-     * Called after the capture ends (if and only if {@link #init()} has been called).
+     * Called after the last capture ends (if and only if {@link #init()} has been called).
      */
     public abstract void release();
+
+    /**
+     * Called once before each capture starts, before {@link #getSize()}.
+     */
+    public void prepare() throws ConfigurationException, IOException {
+        // empty by default
+    }
 
     /**
      * Start the capture to the target surface.
@@ -47,6 +56,13 @@ public abstract class SurfaceCapture {
      * @param surface the surface which will be encoded
      */
     public abstract void start(Surface surface) throws IOException;
+
+    /**
+     * Stop the capture.
+     */
+    public void stop() {
+        // Do nothing by default
+    }
 
     /**
      * Return the video size
@@ -70,4 +86,11 @@ public abstract class SurfaceCapture {
     public boolean isClosed() {
         return false;
     }
+
+    /**
+     * Manually request to invalidate (typically a user request).
+     * <p>
+     * The capture implementation is free to ignore the request and do nothing.
+     */
+    public abstract void requestInvalidate();
 }

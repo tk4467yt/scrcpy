@@ -66,56 +66,6 @@ get_server_path(void) {
     return server_path;
 }
 
-static void
-sc_server_params_destroy(struct sc_server_params *params) {
-    // The server stores a copy of the params provided by the user
-    free((char *) params->req_serial);
-    free((char *) params->crop);
-    free((char *) params->video_codec_options);
-    free((char *) params->audio_codec_options);
-    free((char *) params->video_encoder);
-    free((char *) params->audio_encoder);
-    free((char *) params->tcpip_dst);
-    free((char *) params->camera_id);
-    free((char *) params->camera_ar);
-}
-
-static bool
-sc_server_params_copy(struct sc_server_params *dst,
-                      const struct sc_server_params *src) {
-    *dst = *src;
-
-    // The params reference user-allocated memory, so we must copy them to
-    // handle them from another thread
-
-#define COPY(FIELD) do { \
-    dst->FIELD = NULL; \
-    if (src->FIELD) { \
-        dst->FIELD = strdup(src->FIELD); \
-        if (!dst->FIELD) { \
-            goto error; \
-        } \
-    } \
-} while(0)
-
-    COPY(req_serial);
-    COPY(crop);
-    COPY(video_codec_options);
-    COPY(audio_codec_options);
-    COPY(video_encoder);
-    COPY(audio_encoder);
-    COPY(tcpip_dst);
-    COPY(camera_id);
-    COPY(camera_ar);
-#undef COPY
-
-    return true;
-
-error:
-    sc_server_params_destroy(dst);
-    return false;
-}
-
 static bool
 push_server(struct sc_intr *intr, const char *serial) {
     char *server_path = get_server_path();
@@ -251,18 +201,31 @@ execute_server(struct sc_server *server,
     cmd[count++] = "app_process";
 
 #ifdef SERVER_DEBUGGER
+    uint16_t sdk_version = sc_adb_get_device_sdk_version(&server->intr, serial);
+    if (!sdk_version) {
+        LOGE("Could not determine SDK version");
+        return 0;
+    }
+
 # define SERVER_DEBUGGER_PORT "5005"
-    cmd[count++] =
-# ifdef SERVER_DEBUGGER_METHOD_NEW
-        /* Android 9 and above */
-        "-XjdwpProvider:internal -XjdwpOptions:transport=dt_socket,suspend=y,"
-        "server=y,address="
-# else
-        /* Android 8 and below */
-        "-agentlib:jdwp=transport=dt_socket,suspend=y,server=y,address="
-# endif
-            SERVER_DEBUGGER_PORT;
+    const char *dbg;
+    if (sdk_version < 28) {
+        // Android < 9
+        dbg = "-agentlib:jdwp=transport=dt_socket,suspend=y,server=y,address="
+              SERVER_DEBUGGER_PORT;
+    } else if (sdk_version < 30) {
+        // Android >= 9 && Android < 11
+        dbg = "-XjdwpProvider:internal -XjdwpOptions:transport=dt_socket,"
+              "suspend=y,server=y,address=" SERVER_DEBUGGER_PORT;
+    } else {
+        // Android >= 11
+        // Contrary to the other methods, this does not suspend on start.
+        // <https://github.com/Genymobile/scrcpy/pull/5466>
+        dbg = "-XjdwpProvider:adbconnection";
+    }
+    cmd[count++] = dbg;
 #endif
+
     cmd[count++] = "/"; // unused
     cmd[count++] = "com.genymobile.scrcpy.Server";
     cmd[count++] = SCRCPY_VERSION;
@@ -324,9 +287,21 @@ execute_server(struct sc_server *server,
         VALIDATE_STRING(params->max_fps);
         ADD_PARAM("max_fps=%s", params->max_fps);
     }
-    if (params->lock_video_orientation != SC_LOCK_VIDEO_ORIENTATION_UNLOCKED) {
-        ADD_PARAM("lock_video_orientation=%" PRIi8,
-                  params->lock_video_orientation);
+    if (params->angle) {
+        VALIDATE_STRING(params->angle);
+        ADD_PARAM("angle=%s", params->angle);
+    }
+    if (params->capture_orientation_lock != SC_ORIENTATION_UNLOCKED
+            || params->capture_orientation != SC_ORIENTATION_0) {
+        if (params->capture_orientation_lock == SC_ORIENTATION_LOCKED_INITIAL) {
+            ADD_PARAM("capture_orientation=@");
+        } else {
+            const char *orient =
+                sc_orientation_get_name(params->capture_orientation);
+            bool locked =
+                params->capture_orientation_lock != SC_ORIENTATION_UNLOCKED;
+            ADD_PARAM("capture_orientation=%s%s", locked ? "@" : "", orient);
+        }
     }
     if (server->tunnel.forward) {
         ADD_PARAM("tunnel_forward=true");
@@ -370,6 +345,11 @@ execute_server(struct sc_server *server,
     if (params->stay_awake) {
         ADD_PARAM("stay_awake=true");
     }
+    if (params->screen_off_timeout != -1) {
+        assert(params->screen_off_timeout >= 0);
+        uint64_t ms = SC_TICK_TO_MS(params->screen_off_timeout);
+        ADD_PARAM("screen_off_timeout=%" PRIu64, ms);
+    }
     if (params->video_codec_options) {
         VALIDATE_STRING(params->video_codec_options);
         ADD_PARAM("video_codec_options=%s", params->video_codec_options);
@@ -405,6 +385,13 @@ execute_server(struct sc_server *server,
         // By default, power_on is true
         ADD_PARAM("power_on=false");
     }
+    if (params->new_display) {
+        VALIDATE_STRING(params->new_display);
+        ADD_PARAM("new_display=%s", params->new_display);
+    }
+    if (!params->vd_system_decorations) {
+        ADD_PARAM("vd_system_decorations=false");
+    }
     if (params->list & SC_OPTION_LIST_ENCODERS) {
         ADD_PARAM("list_encoders=true");
     }
@@ -417,16 +404,23 @@ execute_server(struct sc_server *server,
     if (params->list & SC_OPTION_LIST_CAMERA_SIZES) {
         ADD_PARAM("list_camera_sizes=true");
     }
+    if (params->list & SC_OPTION_LIST_APPS) {
+        ADD_PARAM("list_apps=true");
+    }
 
 #undef ADD_PARAM
 
     cmd[count++] = NULL;
 
 #ifdef SERVER_DEBUGGER
-    LOGI("Server debugger waiting for a client on device port "
-         SERVER_DEBUGGER_PORT "...");
-    // From the computer, run
-    //     adb forward tcp:5005 tcp:5005
+    LOGI("Server debugger listening%s...",
+         sdk_version < 30 ? " on port " SERVER_DEBUGGER_PORT : "");
+    // For Android < 11, from the computer:
+    //     - run `adb forward tcp:5005 tcp:5005`
+    // For Android >= 11:
+    //     - execute `adb jdwp` to get the jdwp port
+    //     - run `adb forward tcp:5005 jdwp:XXXX` (replace XXXX)
+    //
     // Then, from Android Studio: Run > Debug > Edit configurations...
     // On the left, click on '+', "Remote", with:
     //     Host: localhost
@@ -499,22 +493,18 @@ connect_to_server(struct sc_server *server, unsigned attempts, sc_tick delay,
 bool
 sc_server_init(struct sc_server *server, const struct sc_server_params *params,
               const struct sc_server_callbacks *cbs, void *cbs_userdata) {
-    bool ok = sc_server_params_copy(&server->params, params);
-    if (!ok) {
-        LOG_OOM();
-        return false;
-    }
+    // The allocated data in params (const char *) must remain valid until the
+    // end of the program
+    server->params = *params;
 
-    ok = sc_mutex_init(&server->mutex);
+    bool ok = sc_mutex_init(&server->mutex);
     if (!ok) {
-        sc_server_params_destroy(&server->params);
         return false;
     }
 
     ok = sc_cond_init(&server->cond_stopped);
     if (!ok) {
         sc_mutex_destroy(&server->mutex);
-        sc_server_params_destroy(&server->params);
         return false;
     }
 
@@ -522,7 +512,6 @@ sc_server_init(struct sc_server *server, const struct sc_server_params *params,
     if (!ok) {
         sc_cond_destroy(&server->cond_stopped);
         sc_mutex_destroy(&server->mutex);
-        sc_server_params_destroy(&server->params);
         return false;
     }
 
@@ -1161,7 +1150,6 @@ sc_server_destroy(struct sc_server *server) {
 
     free(server->serial);
     free(server->device_socket_name);
-    sc_server_params_destroy(&server->params);
     sc_intr_destroy(&server->intr);
     sc_cond_destroy(&server->cond_stopped);
     sc_mutex_destroy(&server->mutex);
