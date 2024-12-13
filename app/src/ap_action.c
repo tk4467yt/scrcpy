@@ -146,6 +146,12 @@ static int make_ax_jitter(int limit)
 
     return retJitter;
 }
+
+static int scroll_step_expireCount(int steps)
+{
+    // 500ms 是滑动时间
+    return (500 / (steps + 2)) / AX_REPEAT_TIMER_REPEAT_VAL;
+}
 static void auto_scroll_handle_4_up()
 {
     LOGD("auto scroll up");
@@ -159,21 +165,21 @@ static void auto_scroll_handle_4_up()
     int end_x = start_x + make_ax_jitter(jitter_limit_small);
     int end_y = start_y - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_small);
 
+    int steps = 10 + make_ax_jitter(2);
+    int expireCount = scroll_step_expireCount(steps);
+
     // start touch
     struct ax_delayed_action beginTouch;
     beginTouch.delayed_type = ax_delayed_type_touch_down;
     beginTouch.touch_x = start_x;
     beginTouch.touch_y = start_y;
-    beginTouch.expire_count = 0;
+    beginTouch.expire_count = expireCount;
 
     add_ax_delayed_action(beginTouch);
 
     // moving
-    int jitter_step = 2;
-    int steps = 10 + make_ax_jitter(jitter_step);
     int step_x = (end_x - start_x) / steps;
     int step_y = (end_y - start_y) / steps;
-    int expire_count = 0;
 
     int moving_x = start_x;
     int moving_y = start_y;
@@ -183,7 +189,7 @@ static void auto_scroll_handle_4_up()
         moveTouch.delayed_type = ax_delayed_type_touch_move;
         moveTouch.touch_x = moving_x;
         moveTouch.touch_y = moving_y;
-        moveTouch.expire_count = expire_count;
+        moveTouch.expire_count = expireCount;
 
         add_ax_delayed_action(moveTouch);
 
@@ -196,12 +202,12 @@ static void auto_scroll_handle_4_up()
     endTouch.delayed_type = ax_delayed_type_touch_up;
     endTouch.touch_x = end_x;
     endTouch.touch_y = end_y;
-    endTouch.expire_count = 0;
+    endTouch.expire_count = expireCount;
 
     add_ax_delayed_action(endTouch);
 }
 
-void auto_scroll_handle_4_left()
+static void auto_scroll_handle_4_left()
 {
     LOGD("auto scroll left");
 
@@ -214,21 +220,21 @@ void auto_scroll_handle_4_left()
     int end_x = start_x - last_send_screen_height / 4 + make_ax_jitter(jitter_limit_small);
     int end_y = start_y + make_ax_jitter(jitter_limit_small);
 
+    int steps = 10 + make_ax_jitter(2);
+    int expireCount = scroll_step_expireCount(steps);
+
     // start touch
     struct ax_delayed_action beginTouch;
     beginTouch.delayed_type = ax_delayed_type_touch_down;
     beginTouch.touch_x = start_x;
     beginTouch.touch_y = start_y;
-    beginTouch.expire_count = 0;
+    beginTouch.expire_count = expireCount;
 
     add_ax_delayed_action(beginTouch);
 
     // moving
-    int jitter_step = 2;
-    int steps = 10 + make_ax_jitter(jitter_step);
     int step_x = (end_x - start_x) / steps;
     int step_y = (end_y - start_y) / steps;
-    int expire_count = 0;
 
     int moving_x = start_x;
     int moving_y = start_y;
@@ -238,7 +244,7 @@ void auto_scroll_handle_4_left()
         moveTouch.delayed_type = ax_delayed_type_touch_move;
         moveTouch.touch_x = moving_x;
         moveTouch.touch_y = moving_y;
-        moveTouch.expire_count = expire_count;
+        moveTouch.expire_count = expireCount;
 
         add_ax_delayed_action(moveTouch);
 
@@ -251,7 +257,7 @@ void auto_scroll_handle_4_left()
     endTouch.delayed_type = ax_delayed_type_touch_up;
     endTouch.touch_x = end_x;
     endTouch.touch_y = end_y;
-    endTouch.expire_count = 0;
+    endTouch.expire_count = expireCount;
 
     add_ax_delayed_action(endTouch);
 }

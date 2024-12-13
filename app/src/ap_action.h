@@ -19,6 +19,4 @@ void ax_set_missed_key_packet(AVPacket *keyPacket);
 /// @brief client begin video
 void sendBeginVideoPacket(void);
 
-void auto_scroll_handle_4_left(void);
-
 #endif // end AP_ACTION_H
