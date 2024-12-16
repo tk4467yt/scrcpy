@@ -85,16 +85,16 @@ static void add_ax_delayed_action(struct ax_delayed_action touchAction)
 
 // packets utility
 
-static int add_to_readed_buf(const uv_buf_t buf)
+static int add_to_readed_buf(char *add_buf, size_t add_length)
 {
-    if (readed_buf_used_size + buf.len > AX_READED_BUF_SIZE)
+    if (readed_buf_used_size + add_length > AX_READED_BUF_SIZE)
     {
-        LOGE("AX add_to_readed_buf failed: %d %d", (int)readed_buf_used_size, (int)buf.len);
+        LOGE("AX add_to_readed_buf failed: %d %d", (int)readed_buf_used_size, (int)add_length);
         return SCRCPY_EXIT_FAILURE;
     }
 
-    memcpy(ax_readed_buf + readed_buf_used_size, buf.base, buf.len);
-    readed_buf_used_size += buf.len;
+    memcpy(ax_readed_buf + readed_buf_used_size, add_buf, add_length);
+    readed_buf_used_size += add_length;
 
     return SCRCPY_EXIT_SUCCESS;
 }
@@ -262,9 +262,9 @@ static void auto_scroll_handle_4_left()
     add_ax_delayed_action(endTouch);
 }
 
-static void handle_ax_json_cmd(const uv_buf_t buf)
+static void handle_ax_json_cmd(char *cmdStart, size_t cmdLength)
 {
-    cJSON *cmdJson = cJSON_ParseWithLength(buf.base, buf.len);
+    cJSON *cmdJson = cJSON_ParseWithLength(cmdStart, cmdLength);
 
     if (sc_get_log_level() == SC_LOG_LEVEL_VERBOSE || sc_get_log_level() == SC_LOG_LEVEL_DEBUG)
     {
@@ -551,9 +551,9 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
     }
 }
 
-static int handle_received_data(const uv_buf_t buf)
+static int handle_received_data(char *received_buf, size_t received_length)
 {
-    int retVal = add_to_readed_buf(buf);
+    int retVal = add_to_readed_buf(received_buf, received_length);
 
     if (SCRCPY_EXIT_SUCCESS == retVal)
     {
@@ -579,7 +579,7 @@ static int handle_received_data(const uv_buf_t buf)
             }
             else
             {
-                handle_ax_json_cmd(uv_buf_init(ax_readed_buf + headerLen, packet_len - headerLen));
+                handle_ax_json_cmd(ax_readed_buf + headerLen, packet_len - headerLen);
 
                 retVal = remove_readed_buf_head(packet_len);
             }
@@ -595,7 +595,7 @@ static void on_readed_data(uv_stream_t *stream, ssize_t nread, const uv_buf_t *b
 
     if (nread > 0)
     {
-        int retVal = handle_received_data(uv_buf_init(buf->base, nread));
+        int retVal = handle_received_data(buf->base, nread);
         if (SCRCPY_EXIT_SUCCESS != retVal)
         {
             LOGE("AX on_readed_data handle failed");
@@ -632,7 +632,7 @@ static void ax_close_handles_and_stop()
     // when state is_closing, uv_close will crash
     if (uv_is_closing((uv_handle_t *)&tcpClientSocket))
     {
-        uv_read_stop((uv_stream_t *)&tcpClientSocket);
+        // uv_read_stop((uv_stream_t *)&tcpClientSocket);
     }
     else
     {
