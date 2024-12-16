@@ -340,6 +340,8 @@ static void handle_ax_json_cmd(const uv_buf_t buf)
 
                 add_ax_delayed_action(upTouch);
             }
+
+            cJSON_Delete(contentJson);
         }
         else if (strcmp(innerCmd, JSON_COMMAND_TAP_HOME) == 0)
         {
@@ -411,7 +413,7 @@ static void sendAXCommand(char *cmd_str)
     on_require_alloc_buf(NULL, 0, &writer_buf);
 
     makeAPPacket(writer_buf.base, cmd_str);
-    writer_buf.len = strlen(cmd_str) + apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_JSON);
+    writer_buf.len = apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_JSON) + strlen(cmd_str);
 
     ax_writer->data = (void *)writer_buf.base;
 
@@ -499,7 +501,8 @@ static void onAXRepeatTimerExpired(uv_timer_t *handle)
             int delayed_type = handling_delayed_action.delayed_type;
             if (isAxDelayedTypeIsTouch(delayed_type))
             {
-                struct sc_point touchPoint = {.x = handling_delayed_action.touch_x, .y = handling_delayed_action.touch_y};
+                struct sc_point touchPoint = {.x = handling_delayed_action.touch_x,
+                                              .y = handling_delayed_action.touch_y};
 
                 if (ax_delayed_type_touch_down == delayed_type || ax_delayed_type_touch_up == delayed_type)
                 {
@@ -626,7 +629,8 @@ static void ax_close_handles_and_stop()
     uv_timer_stop(&repeatTimer);
     uv_close((uv_handle_t *)&repeatTimer, NULL);
 
-    uv_close((uv_handle_t *)&tcpClientSocket, NULL);
+    // uv_close((uv_handle_t *)&tcpClientSocket, NULL);
+    uv_read_stop((uv_stream_t *)&tcpClientSocket);
 
     uv_stop(&axUVLoop);
 }
@@ -719,16 +723,18 @@ static int ax_thread_cb(void *data)
     retVal = uv_run(&axUVLoop, UV_RUN_DEFAULT);
     if (retVal)
     {
-        LOGI("AX uv_run failed");
+        LOGE("AX uv_run failed");
     }
+
+    LOGW("AX uv_run stopped");
+    ax_running = false;
 
     retVal = uv_loop_close(&axUVLoop);
     if (retVal)
     {
-        LOGI("AX uv_loop_close failed: %s", uv_strerror(retVal));
+        LOGE("AX uv_loop_close failed: %s", uv_strerror(retVal));
     }
 
-    ax_running = false;
     sc_vecdeque_destroy(&ax_pending_delayed_queue);
 
     return SCRCPY_EXIT_SUCCESS;
@@ -770,6 +776,8 @@ int ax_stop_action()
         uv_async_send(&stop_async);
     }
     sc_thread_join(&ax_thread, NULL);
+
+    ax_thread_started = false;
 
     sc_mutex_destroy(&ax_mutex);
 

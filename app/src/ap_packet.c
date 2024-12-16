@@ -27,9 +27,9 @@ size_t apPacketHeaderLength(int contentType)
 
 char *makeAPPacket(char *out_buf, char *cmd_str)
 {
-    size_t headerLen = apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_JSON);
+    size_t header_len = apPacketHeaderLength(AP_STREAM_CONTENT_TYPE_JSON);
     size_t cmd_len = strlen(cmd_str);
-    size_t packet_len = headerLen + cmd_len;
+    size_t packet_len = header_len + cmd_len;
 
     out_buf[0] = (packet_len >> 24) & 0xff;
     out_buf[1] = (packet_len >> 16) & 0xff;
@@ -38,7 +38,7 @@ char *makeAPPacket(char *out_buf, char *cmd_str)
 
     out_buf[4] = AP_STREAM_CONTENT_TYPE_JSON;
 
-    memcpy(out_buf + headerLen, cmd_str, cmd_len);
+    memcpy(out_buf + header_len, cmd_str, cmd_len);
 
     return out_buf;
 }
