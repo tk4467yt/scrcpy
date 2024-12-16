@@ -629,8 +629,15 @@ static void ax_close_handles_and_stop()
     uv_timer_stop(&repeatTimer);
     uv_close((uv_handle_t *)&repeatTimer, NULL);
 
-    // uv_close((uv_handle_t *)&tcpClientSocket, NULL);
-    uv_read_stop((uv_stream_t *)&tcpClientSocket);
+    // when state is_closing, uv_close will crash
+    if (uv_is_closing((uv_handle_t *)&tcpClientSocket))
+    {
+        uv_read_stop((uv_stream_t *)&tcpClientSocket);
+    }
+    else
+    {
+        uv_close((uv_handle_t *)&tcpClientSocket, NULL);
+    }
 
     uv_stop(&axUVLoop);
 }
