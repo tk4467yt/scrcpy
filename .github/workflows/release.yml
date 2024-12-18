@@ -42,10 +42,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Build scrcpy-server
+      - name: Build
         run: release/build_server.sh
 
-      - name: Upload scrcpy-server artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: scrcpy-server
@@ -63,7 +63,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Build scrcpy-server without gradle
+      - name: Build without gradle
         run: server/build_without_gradle.sh
 
   test-client:
@@ -74,7 +74,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt update
           sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
              libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
              libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
@@ -83,36 +82,44 @@ jobs:
       - name: Test
         run: release/test_client.sh
 
-  build-linux:
+  build-linux-x86_64:
     runs-on: ubuntu-latest
     steps:
+      - name: Check architecture
+        run: |
+            arch=$(uname -m)
+            if [[ "$arch" != x86_64 ]]
+            then
+                echo "Unexpected architecture: $arch" >&2
+                exit 1
+            fi
+
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt update
           sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
              libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
              libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
              libv4l-dev
 
-      - name: Build linux
-        run: release/build_linux.sh
+      - name: Build
+        run: release/build_linux.sh x86_64
 
       # upload-artifact does not preserve permissions
       - name: Tar
         run: |
-            cd release/work/build-linux
+            cd release/work/build-linux-x86_64
             mkdir dist-tar
             cd dist-tar
             tar -C .. -cvf dist.tar.gz dist/
 
-      - name: Upload build-linux artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-linux-intermediate
-          path: release/work/build-linux/dist-tar/
+          name: build-linux-x86_64-intermediate
+          path: release/work/build-linux-x86_64/dist-tar/
 
   build-win32:
     runs-on: ubuntu-latest
@@ -122,7 +129,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt update
           sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
              libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
              libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
@@ -131,7 +137,7 @@ jobs:
       - name: Workaround for old meson version run by Github Actions
         run: sed -i 's/^pkg-config/pkgconfig/' cross_win32.txt
 
-      - name: Build win32
+      - name: Build
         run: release/build_windows.sh 32
 
       # upload-artifact does not preserve permissions
@@ -142,7 +148,7 @@ jobs:
             cd dist-tar
             tar -C .. -cvf dist.tar.gz dist/
 
-      - name: Upload build-win32 artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-win32-intermediate
@@ -156,7 +162,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt update
           sudo apt install -y meson ninja-build nasm ffmpeg libsdl2-2.0-0 \
              libsdl2-dev libavcodec-dev libavdevice-dev libavformat-dev \
              libavutil-dev libswresample-dev libusb-1.0-0 libusb-1.0-0-dev \
@@ -165,7 +170,7 @@ jobs:
       - name: Workaround for old meson version run by Github Actions
         run: sed -i 's/^pkg-config/pkgconfig/' cross_win64.txt
 
-      - name: Build win64
+      - name: Build
         run: release/build_windows.sh 64
 
       # upload-artifact does not preserve permissions
@@ -176,15 +181,24 @@ jobs:
             cd dist-tar
             tar -C .. -cvf dist.tar.gz dist/
 
-      - name: Upload build-win64 artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-win64-intermediate
           path: release/work/build-win64/dist-tar/
 
-  build-macos:
+  build-macos-aarch64:
     runs-on: macos-latest
     steps:
+      - name: Check architecture
+        run: |
+            arch=$(uname -m)
+            if [[ "$arch" != arm64 ]]
+            then
+                echo "Unexpected architecture: $arch" >&2
+                exit 1
+            fi
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -193,27 +207,63 @@ jobs:
             brew install meson ninja nasm libiconv zlib automake autoconf \
                 libtool
 
-      - name: Build macOS
-        run: release/build_macos.sh
+      - name: Build
+        run: release/build_macos.sh aarch64
 
       # upload-artifact does not preserve permissions
       - name: Tar
         run: |
-            cd release/work/build-macos
+            cd release/work/build-macos-aarch64
             mkdir dist-tar
             cd dist-tar
             tar -C .. -cvf dist.tar.gz dist/
 
-      - name: Upload build-macos artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-macos-intermediate
-          path: release/work/build-macos/dist-tar/
+          name: build-macos-aarch64-intermediate
+          path: release/work/build-macos-aarch64/dist-tar/
 
-  package-linux:
+  build-macos-x86_64:
+    runs-on: macos-13
+    steps:
+      - name: Check architecture
+        run: |
+            arch=$(uname -m)
+            if [[ "$arch" != x86_64 ]]
+            then
+                echo "Unexpected architecture: $arch" >&2
+                exit 1
+            fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install meson ninja nasm libiconv zlib automake
+             # autoconf and libtool are already installed on macos-13
+
+      - name: Build
+        run: release/build_macos.sh x86_64
+
+      # upload-artifact does not preserve permissions
+      - name: Tar
+        run: |
+            cd release/work/build-macos-x86_64
+            mkdir dist-tar
+            cd dist-tar
+            tar -C .. -cvf dist.tar.gz dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos-x86_64-intermediate
+          path: release/work/build-macos-x86_64/dist-tar/
+
+  package-linux-x86_64:
     needs:
       - build-scrcpy-server
-      - build-linux
+      - build-linux-x86_64
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -225,25 +275,25 @@ jobs:
           name: scrcpy-server
           path: release/work/build-server/server/
 
-      - name: Download build-linux
+      - name: Download build-linux-x86_64
         uses: actions/download-artifact@v4
         with:
-          name: build-linux-intermediate
-          path: release/work/build-linux/dist-tar/
+          name: build-linux-x86_64-intermediate
+          path: release/work/build-linux-x86_64/dist-tar/
 
       # upload-artifact does not preserve permissions
       - name: Detar
         run: |
-            cd release/work/build-linux
+            cd release/work/build-linux-x86_64
             tar xf dist-tar/dist.tar.gz
 
-      - name: Package linux
-        run: release/package_client.sh linux tar.gz
+      - name: Package
+        run: release/package_client.sh linux-x86_64 tar.gz
 
-      - name: Upload linux release
+      - name: Upload release
         uses: actions/upload-artifact@v4
         with:
-          name: release-linux
+          name: release-linux-x86_64
           path: release/output/
 
   package-win32:
@@ -273,10 +323,10 @@ jobs:
             cd release/work/build-win32
             tar xf dist-tar/dist.tar.gz
 
-      - name: Package win32
+      - name: Package
         run: release/package_client.sh win32 zip
 
-      - name: Upload win32 release
+      - name: Upload release
         uses: actions/upload-artifact@v4
         with:
           name: release-win32
@@ -309,19 +359,55 @@ jobs:
             cd release/work/build-win64
             tar xf dist-tar/dist.tar.gz
 
-      - name: Package win64
+      - name: Package
         run: release/package_client.sh win64 zip
 
-      - name: Upload win64 release
+      - name: Upload release
         uses: actions/upload-artifact@v4
         with:
           name: release-win64
           path: release/output
 
-  package-macos:
+  package-macos-aarch64:
     needs:
       - build-scrcpy-server
-      - build-macos
+      - build-macos-aarch64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download scrcpy-server
+        uses: actions/download-artifact@v4
+        with:
+          name: scrcpy-server
+          path: release/work/build-server/server/
+
+      - name: Download build-macos-aarch64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-macos-aarch64-intermediate
+          path: release/work/build-macos-aarch64/dist-tar/
+
+      # upload-artifact does not preserve permissions
+      - name: Detar
+        run: |
+            cd release/work/build-macos-aarch64
+            tar xf dist-tar/dist.tar.gz
+
+      - name: Package
+        run: release/package_client.sh macos-aarch64 tar.gz
+
+      - name: Upload release
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-aarch64
+          path: release/output/
+
+  package-macos-x86_64:
+    needs:
+      - build-scrcpy-server
+      - build-macos-x86_64
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -336,31 +422,32 @@ jobs:
       - name: Download build-macos
         uses: actions/download-artifact@v4
         with:
-          name: build-macos-intermediate
-          path: release/work/build-macos/dist-tar/
+          name: build-macos-x86_64-intermediate
+          path: release/work/build-macos-x86_64/dist-tar/
 
       # upload-artifact does not preserve permissions
       - name: Detar
         run: |
-            cd release/work/build-macos
+            cd release/work/build-macos-x86_64
             tar xf dist-tar/dist.tar.gz
 
-      - name: Package macos
-        run: release/package_client.sh macos tar.gz
+      - name: Package
+        run: release/package_client.sh macos-x86_64 tar.gz
 
-      - name: Upload macos release
+      - name: Upload release
         uses: actions/upload-artifact@v4
         with:
-          name: release-macos
+          name: release-macos-x86_64
           path: release/output/
 
   release:
     needs:
       - build-scrcpy-server
-      - package-linux
+      - package-linux-x86_64
       - package-win32
       - package-win64
-      - package-macos
+      - package-macos-aarch64
+      - package-macos-x86_64
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -372,10 +459,10 @@ jobs:
           name: scrcpy-server
           path: release/work/build-server/server/
 
-      - name: Download release-linux
+      - name: Download release-linux-x86_64
         uses: actions/download-artifact@v4
         with:
-          name: release-linux
+          name: release-linux-x86_64
           path: release/output/
 
       - name: Download release-win32
@@ -390,10 +477,16 @@ jobs:
           name: release-win64
           path: release/output/
 
-      - name: Download release-macos
+      - name: Download release-macos-aarch64
         uses: actions/download-artifact@v4
         with:
-          name: release-macos
+          name: release-macos-aarch64
+          path: release/output/
+
+      - name: Download release-macos-x86_64
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-x86_64
           path: release/output/
 
       - name: Package server

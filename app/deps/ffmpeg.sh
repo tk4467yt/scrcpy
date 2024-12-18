@@ -40,16 +40,14 @@ else
         export LDFLAGS='-static-libgcc -static'
     elif [[ "$HOST" == "macos" ]]
     then
-        export LDFLAGS="$LDFLAGS -L/opt/homebrew/opt/zlib/lib"
-        export CPPFLAGS="$CPPFLAGS -I/opt/homebrew/opt/zlib/include"
-
-        export LDFLAGS="$LDFLAGS-L/opt/homebrew/opt/libiconv/lib"
-        export CPPFLAGS="$CPPFLAGS -I/opt/homebrew/opt/libiconv/include"
         export PKG_CONFIG_PATH="/opt/homebrew/opt/zlib/lib/pkgconfig"
     fi
 
+    export PKG_CONFIG_PATH="$INSTALL_DIR/$DIRNAME/lib/pkgconfig:$PKG_CONFIG_PATH"
+
     conf=(
         --prefix="$INSTALL_DIR/$DIRNAME"
+        --pkg-config-flags="--static"
         --extra-cflags="-O2 -fPIC"
         --disable-programs
         --disable-doc
@@ -62,9 +60,11 @@ else
         --disable-vaapi
         --disable-vdpau
         --enable-swresample
+        --enable-libdav1d
         --enable-decoder=h264
         --enable-decoder=hevc
         --enable-decoder=av1
+        --enable-decoder=libdav1d
         --enable-decoder=pcm_s16le
         --enable-decoder=opus
         --enable-decoder=aac

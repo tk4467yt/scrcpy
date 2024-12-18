@@ -2,7 +2,7 @@
 source for the project. Do not download releases from random websites, even if
 their name contains `scrcpy`.**
 
-# scrcpy (v3.0)
+# scrcpy (v3.1)
 
 <img src="app/data/icon.svg" width="128" height="128" alt="scrcpy" align="right" />
 
@@ -76,6 +76,16 @@ Note that USB debugging is not required to run scrcpy in [OTG mode](doc/otg.md).
  - [Linux](doc/linux.md)
  - [Windows](doc/windows.md) (read [how to run](doc/windows.md#run))
  - [macOS](doc/macos.md)
+
+
+## Must-know tips
+
+ - [Reducing resolution](doc/video.md#size) may greatly improve performance
+   (`scrcpy -m1024`)
+ - [_Right-click_](doc/mouse.md#mouse-bindings) triggers `BACK`
+ - [_Middle-click_](doc/mouse.md#mouse-bindings) triggers `HOME`
+ - <kbd>Alt</kbd>+<kbd>f</kbd> toggles [fullscreen](doc/window.md#fullscreen)
+ - There are many other [shortcuts](doc/shortcuts.md)
 
 
 ## Usage examples

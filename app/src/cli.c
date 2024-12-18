@@ -110,6 +110,7 @@ enum {
     OPT_CAPTURE_ORIENTATION,
     OPT_ANGLE,
     OPT_NO_VD_SYSTEM_DECORATIONS,
+    OPT_NO_VD_DESTROY_CONTENT,
 };
 
 struct sc_option {
@@ -660,6 +661,15 @@ static const struct sc_option options[] = {
         .text = "Do not power on the device on start.",
     },
     {
+        .longopt_id = OPT_NO_VD_DESTROY_CONTENT,
+        .longopt = "no-vd-destroy-content",
+        .text = "Disable virtual display \"destroy content on removal\" "
+                "flag.\n"
+                "With this option, when the virtual display is closed, the "
+                "running apps are moved to the main display rather than being "
+                "destroyed.",
+    },
+    {
         .longopt_id = OPT_NO_VD_SYSTEM_DECORATIONS,
         .longopt = "no-vd-system-decorations",
         .text = "Disable virtual display system decorations flag.",
@@ -860,16 +870,17 @@ static const struct sc_option options[] = {
     {
         .longopt_id = OPT_TCPIP,
         .longopt = "tcpip",
-        .argdesc = "ip[:port]",
+        .argdesc = "[+]ip[:port]",
         .optional_arg = true,
-        .text = "Configure and reconnect the device over TCP/IP.\n"
+        .text = "Configure and connect the device over TCP/IP.\n"
                 "If a destination address is provided, then scrcpy connects to "
                 "this address before starting. The device must listen on the "
                 "given TCP port (default is 5555).\n"
                 "If no destination address is provided, then scrcpy attempts "
                 "to find the IP address of the current device (typically "
                 "connected over USB), enables TCP/IP mode, then connects to "
-                "this address before starting.",
+                "this address before starting.\n"
+                "Prefix the address with a '+' to force a reconnection.",
     },
     {
         .longopt_id = OPT_TIME_LIMIT,
@@ -2704,8 +2715,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             case OPT_ANGLE:
                 opts->angle = optarg;
                 break;
+            case OPT_NO_VD_DESTROY_CONTENT:
+                opts->vd_destroy_content = false;
+                break;
             case OPT_NO_VD_SYSTEM_DECORATIONS:
-                opts->vd_system_decorations = optarg;
+                opts->vd_system_decorations = false;
                 break;
             default:
                 // getopt prints the error message on stderr
