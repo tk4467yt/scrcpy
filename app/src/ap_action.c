@@ -336,7 +336,7 @@ static void handle_ax_json_cmd(char *cmdStart, size_t cmdLength)
                 upTouch.delayed_type = ax_delayed_type_touch_up;
                 upTouch.touch_x = x;
                 upTouch.touch_y = y;
-                upTouch.expire_count = 300 / AX_REPEAT_TIMER_REPEAT_VAL; // 300ms delayed
+                upTouch.expire_count = 100 / AX_REPEAT_TIMER_REPEAT_VAL; // 300ms delayed
 
                 add_ax_delayed_action(upTouch);
             }
